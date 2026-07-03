@@ -2,15 +2,22 @@ package python
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
+	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/python"
 	"nocrap/internal/driver"
 )
 
-type PythonDriver struct{}
+type PythonDriver struct {
+	mu    sync.Mutex
+	cache map[string]map[int]int // filePath -> startLine -> CC
+}
 
 func New() *PythonDriver {
 	return &PythonDriver{}
@@ -129,7 +136,7 @@ func extractFunction(node *sitter.Node, source []byte, filePath string, classNam
 	}
 }
 
-func (d *PythonDriver) CalcComplexity(source []byte, fn driver.Function) (int, error) {
+func (d *PythonDriver) calcTreeSitter(source []byte, fn driver.Function) (int, error) {
 	parser := sitter.NewParser()
 	parser.SetLanguage(python.GetLanguage())
 	tree, err := parser.ParseCtx(context.Background(), nil, source)
@@ -151,6 +158,91 @@ func (d *PythonDriver) CalcComplexity(source []byte, fn driver.Function) (int, e
 	cc := 1
 	countCC(funcNode, &cc)
 	return cc, nil
+}
+
+func (d *PythonDriver) CalcComplexity(source []byte, fn driver.Function) (int, error) {
+	// Use radon (McCabe-compliant cyclomatic complexity) via subprocess.
+	// Cache results per file to avoid repeated subprocess calls.
+	d.mu.Lock()
+	if d.cache == nil {
+		d.cache = make(map[string]map[int]int)
+	}
+	if ccMap, ok := d.cache[fn.File]; ok {
+		if cc, ok := ccMap[fn.StartLine]; ok {
+			d.mu.Unlock()
+			return cc, nil
+		}
+	}
+	d.mu.Unlock()
+
+	// Ensure the file exists on disk (needed by radon).
+	filePath := fn.File
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		// Write source to a temp file.
+		tmpFile, err := os.CreateTemp("", "nocrap-*.py")
+		if err != nil {
+			return 0, fmt.Errorf("creating temp file: %w", err)
+		}
+		defer os.Remove(tmpFile.Name())
+		if _, err := tmpFile.Write(source); err != nil {
+			tmpFile.Close()
+			return 0, fmt.Errorf("writing temp file: %w", err)
+		}
+		tmpFile.Close()
+		filePath = tmpFile.Name()
+	}
+
+	// Call radon via subprocess.
+	cmd := exec.Command("python3", "-c", `import json, sys
+from radon.complexity import cc_visit
+file_path = sys.argv[1]
+with open(file_path) as f:
+    src = f.read()
+blocks = cc_visit(src)
+results = []
+for b in blocks:
+    results.append({"name": b.name, "start_line": b.lineno, "complexity": b.complexity})
+print(json.dumps(results))`, filePath)
+	output, err := cmd.Output()
+	if err != nil {
+		// Fallback to tree-sitter on any error.
+		return d.calcTreeSitter(source, fn)
+	}
+
+	type radonBlock struct {
+		Name       string `json:"name"`
+		StartLine  int    `json:"start_line"`
+		Complexity int    `json:"complexity"`
+	}
+	var blocks []radonBlock
+	if err := json.Unmarshal(output, &blocks); err != nil {
+		return d.calcTreeSitter(source, fn)
+	}
+
+	ccMap := make(map[int]int)
+	for _, b := range blocks {
+		ccMap[b.StartLine] = b.Complexity
+	}
+
+	d.mu.Lock()
+	if existing, ok := d.cache[fn.File]; ok {
+		// Merge: radon results may only contain a subset if some functions
+		// fell back to tree-sitter. Preserve existing entries.
+		for k, v := range existing {
+			if _, has := ccMap[k]; !has {
+				ccMap[k] = v
+			}
+		}
+	}
+	d.cache[fn.File] = ccMap
+	d.mu.Unlock()
+
+	if cc, ok := ccMap[fn.StartLine]; ok {
+		return cc, nil
+	}
+
+	// Function not found by radon (unlikely), fallback.
+	return d.calcTreeSitter(source, fn)
 }
 
 func findFunctionNode(root *sitter.Node, source []byte, fn driver.Function) *sitter.Node {

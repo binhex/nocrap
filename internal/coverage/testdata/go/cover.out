@@ -1,0 +1,4 @@
+mode: set
+nocrap/internal/calculator/calculator.go:10.2,13.16 2 1
+nocrap/internal/calculator/calculator.go:14.2,14.31 1 0
+nocrap/internal/calculator/calculator.go:16.2,23.3 3 1

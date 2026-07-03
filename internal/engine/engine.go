@@ -53,6 +53,9 @@ func Analyze(paths []string, cfg *config.Config) ([]FunctionScore, error) {
 		byLang = filtered
 	}
 
+	// Compute source directories for coverage file resolution
+	sourceDirs := computeSourceDirs(paths)
+
 	var allScores []FunctionScore
 
 	for lang, langFiles := range byLang {
@@ -62,7 +65,7 @@ func Analyze(paths []string, cfg *config.Config) ([]FunctionScore, error) {
 		}
 
 		covPath := cfg.CoveragePathForLang(lang)
-		covMap, err := loadCoverage(covPath, lang)
+		covMap, err := loadCoverage(covPath, lang, sourceDirs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not load coverage for %s: %v\n", lang, err)
 		}
@@ -228,15 +231,74 @@ func findDriver(lang string) driver.Driver {
 	return nil
 }
 
-func loadCoverage(path, lang string) (coverage.CoverageMap, error) {
+// computeSourceDirs extracts directory paths from the user-provided source paths.
+// These are used to search for coverage files when the coverage path is relative.
+func computeSourceDirs(paths []string) []string {
+	dirs := make([]string, 0, len(paths))
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if info.IsDir() {
+			dirs = append(dirs, p)
+		} else {
+			dirs = append(dirs, filepath.Dir(p))
+		}
+	}
+	return dirs
+}
+
+func loadCoverage(path, lang string, sourceDirs []string) (coverage.CoverageMap, error) {
 	if path == "" {
 		return nil, nil
 	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil, nil
+
+	// Try the given path directly (CWD-relative, matches current behavior)
+	if _, err := os.Stat(path); err == nil {
+		return parseCoverageByLang(path, lang)
 	}
+
+	// If the path is relative and not found, search each source directory
+	// and its parents for the coverage file. This handles the common case
+	// where the user runs nocrap from outside the project directory:
+	//   $ ./nocrap ../boozarr/src   # coverage is at ../boozarr/coverage.json
+	if !filepath.IsAbs(path) {
+		for _, dir := range sourceDirs {
+			// Walk up the directory tree from the source dir looking for the coverage file.
+			// Stop before we reach the root (where filepath.Dir(dir) == dir).
+			for cur := filepath.Clean(dir); ; cur = filepath.Dir(cur) {
+				candidate := filepath.Join(cur, path)
+				if _, err := os.Stat(candidate); err == nil {
+					return parseCoverageByLang(candidate, lang)
+				}
+				// Stop if we can't go up any further (reached root or filesystem boundary)
+				parent := filepath.Dir(cur)
+				if parent == cur {
+					break
+				}
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+func parseCoverageByLang(path, lang string) (coverage.CoverageMap, error) {
 	switch lang {
 	case "python":
+		// Prefer .coverage SQLite database (line-level coverage via data.lines()).
+		// This matches what pytest-crap uses internally and gives correct coverage
+		// percentages for multi-line statements. Fall back to coverage.json if
+		// .coverage is not available or parsing fails.
+		dotCovPath := filepath.Join(filepath.Dir(path), ".coverage")
+		if _, err := os.Stat(dotCovPath); err == nil {
+			if covMap, err := coverage.ParseDotCoverage(dotCovPath); err == nil {
+				return covMap, nil
+			} else {
+				fmt.Fprintf(os.Stderr, "warning: .coverage parse failed (%s), falling back to coverage.json: %v\n", dotCovPath, err)
+			}
+		}
 		return coverage.ParsePythonCoverage(path)
 	case "javascript", "typescript":
 		return coverage.ParseLCOV(path)

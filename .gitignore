@@ -4,3 +4,7 @@
 __pycache__/
 *.pyc
 .venv/
+!internal/coverage/
+!internal/coverage/testdata/go/cover.out
+!internal/coverage/testdata/python/.coverage.json
+crossval/coverage.json

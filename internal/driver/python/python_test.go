@@ -92,6 +92,46 @@ func TestCalcComplexity_Branches(t *testing.T) {
 	t.Logf("all_branches CC = %d", cc)
 }
 
+func TestCalcComplexity_AssertComp(t *testing.T) {
+	fp := testdataPath("assert_comp.py")
+	source, err := os.ReadFile(fp)
+	if err != nil {
+		t.Fatalf("reading fixture: %v", err)
+	}
+
+	d := python.New()
+	funcs, err := d.FindFunctions(source, fp)
+	if err != nil {
+		t.Fatalf("FindFunctions: %v", err)
+	}
+
+	expected := map[string]int{
+		"process_items": 8, // radon: assert(1) + list-comp(1) + comp-if(1) + if(1) + ternary(1) + dict-comp(1) + comp-if(1) + base(1)
+		"nullable":      1,
+	}
+
+	for name, wantCC := range expected {
+		var fn *driver.Function
+		for i := range funcs {
+			if funcs[i].Name == name {
+				fn = &funcs[i]
+				break
+			}
+		}
+		if fn == nil {
+			t.Fatalf("function %q not found", name)
+		}
+
+		cc, err := d.CalcComplexity(source, *fn)
+		if err != nil {
+			t.Fatalf("CalcComplexity(%q): %v", name, err)
+		}
+		if cc != wantCC {
+			t.Errorf("CalcComplexity(%q) = %d, want %d (radon-accurate CC)", name, cc, wantCC)
+		}
+	}
+}
+
 func TestCalcComplexity_EmptyBody(t *testing.T) {
 	source := []byte("def empty():\n    pass\n")
 	d := python.New()
