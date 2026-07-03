@@ -160,7 +160,36 @@ func matchGlobstar(pattern, path string) bool {
 		}
 		return false
 	}
-	return true // ** at end — prefix match is sufficient
+	// ** at end (suffix empty) — check middle parts exist in path
+	// e.g., "**/vendor/**" → parts=["", "/vendor/", ""]
+	// Each middle segment must appear as a path component, in order.
+	if len(parts) > 2 {
+		remaining := path
+		segs := parts[1 : len(parts)-1]
+		for i, seg := range segs {
+			seg = strings.Trim(seg, "/")
+			if seg == "" {
+				continue
+			}
+			last := i == len(segs)-1
+			// Check as path component with / on both sides
+			idx := strings.Index(remaining, "/"+seg+"/")
+			// Check as final path component (e.g., path ending with /vendor)
+			if idx < 0 && last {
+				if strings.HasSuffix(remaining, "/"+seg) {
+					return true
+				}
+				return false
+			}
+			if idx < 0 {
+				return false
+			}
+			remaining = remaining[idx+len(seg)+1:]
+		}
+		return true
+	}
+	// Pattern like "src/**" with only prefix and trailing ** — prefix already checked
+	return true
 }
 
 func groupByLanguage(files []string) map[string][]string {
