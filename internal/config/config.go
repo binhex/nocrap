@@ -32,7 +32,7 @@ func DefaultConfig() *Config {
 		TopN:      20,
 		Exclude:   []string{},
 		Coverage: CoverageConfig{
-			Python:     ".coverage.json",
+			Python:     "coverage.json",
 			JavaScript: "coverage/lcov.info",
 			Go:         "cover.out",
 		},

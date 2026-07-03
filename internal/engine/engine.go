@@ -319,6 +319,20 @@ func computeCoverage(covMap coverage.CoverageMap, filePath string, startLine, en
 		data, ok = covMap[base]
 	}
 	if !ok || data == nil {
+		// Try suffix matching: coverage keys are often relative paths ("src/pkg/file.py")
+		// but WalkDir produces absolute paths ("/project/src/pkg/file.py").
+		for covKey, covData := range covMap {
+			// Only match if the coverage key is a path-suffix at a path boundary.
+			// e.g., "/project/src/pkg/file.py" ends with "/src/pkg/file.py" ✓
+			// but "/project/old_cli.py" must NOT match covKey "cli.py" (handled by basename above).
+			if strings.HasSuffix(filePath, "/"+covKey) {
+				data = covData
+				ok = true
+				break
+			}
+		}
+	}
+	if !ok || data == nil {
 		return 0.0
 	}
 

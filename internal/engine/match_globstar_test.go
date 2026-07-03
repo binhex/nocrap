@@ -1,9 +1,13 @@
 package engine
 
-import "testing"
+import (
+	"testing"
+
+	"nocrap/internal/coverage"
+)
 
 // This white-box test is in package engine (not engine_test) so it can test
-// the unexported matchesExclude and matchGlobstar functions.
+// the unexported matchesExclude, matchGlobstar, and computeCoverage functions.
 
 func TestMatchesExclude(t *testing.T) {
 	tests := []struct {
@@ -139,5 +143,70 @@ func TestCollectFilesWithExcludes(t *testing.T) {
 	}
 	if countPy == 0 {
 		t.Errorf("expected at least 1 .py file, got %d total files: %v", len(files), files)
+	}
+}
+
+func TestComputeCoverage_RelativePathInCoverageMap(t *testing.T) {
+	source := []byte("def add(a, b):\n    return a + b\n")
+	source2 := []byte("x = 1\ny = 2\nz = 3\n")
+
+	covMap := coverage.CoverageMap{
+		"src/boozarr/cli.py": &coverage.CoverageData{
+			CoveredLines: map[int]bool{1: true, 2: true},
+			TotalLines:   3,
+		},
+		"other/unrelated.py": &coverage.CoverageData{
+			CoveredLines: map[int]bool{1: true, 2: true, 3: true},
+			TotalLines:   3,
+		},
+	}
+
+	// Absolute path from WalkDir — should match "src/boozarr/cli.py" via suffix
+	got := computeCoverage(covMap, "/data/boozarr/src/boozarr/cli.py", 1, 2, source)
+	if got <= 0.0 {
+		t.Errorf("absolute path matching relative key: got %.1f%%, want > 0", got)
+	}
+
+	// Exact match
+	got = computeCoverage(covMap, "src/boozarr/cli.py", 1, 2, source)
+	if got <= 0.0 {
+		t.Errorf("exact relative path: got %.1f%%, want > 0", got)
+	}
+
+	// Basename fallback
+	covMapBase := coverage.CoverageMap{
+		"cli.py": &coverage.CoverageData{
+			CoveredLines: map[int]bool{1: true, 2: true},
+			TotalLines:   3,
+		},
+	}
+	got = computeCoverage(covMapBase, "/any/path/cli.py", 1, 2, source)
+	if got <= 0.0 {
+		t.Errorf("basename fallback: got %.1f%%, want > 0", got)
+	}
+
+	// No match
+	got = computeCoverage(covMap, "/nonexistent/path.py", 1, 2, source2)
+	if got > 0.0 {
+		t.Errorf("no matching key: got %.1f%%, want 0.0", got)
+	}
+
+	// False positive: covMap has "cli.py", filePath has "old_cli.py"
+	// The basename fallback already handles bare-filename keys correctly;
+	// suffix matching must NOT match partial filenames without path boundary.
+	covMapPartial := coverage.CoverageMap{
+		"cli.py": &coverage.CoverageData{
+			CoveredLines: map[int]bool{1: true, 2: true},
+			TotalLines:   3,
+		},
+	}
+	got = computeCoverage(covMapPartial, "/project/old_cli.py", 1, 2, source)
+	if got > 0.0 {
+		t.Errorf("false positive: old_cli.py should not match cli.py, got %.1f%%", got)
+	}
+	// Same key via basename should still work
+	got = computeCoverage(covMapPartial, "/any/path/cli.py", 1, 2, source)
+	if got <= 0.0 {
+		t.Errorf("basename cli.py should match, got %.1f%%", got)
 	}
 }

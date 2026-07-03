@@ -48,8 +48,8 @@ python = "custom_coverage.json"
 
 func TestCoveragePathForLang(t *testing.T) {
 	cfg := config.DefaultConfig()
-	if got := cfg.CoveragePathForLang("python"); got != ".coverage.json" {
-		t.Errorf("python = %q, want .coverage.json", got)
+	if got := cfg.CoveragePathForLang("python"); got != "coverage.json" {
+		t.Errorf("python = %q, want coverage.json", got)
 	}
 	if got := cfg.CoveragePathForLang("javascript"); got != "coverage/lcov.info" {
 		t.Errorf("javascript = %q, want coverage/lcov.info", got)
