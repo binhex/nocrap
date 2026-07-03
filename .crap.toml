@@ -1,0 +1,3 @@
+threshold = 9
+top_n = 20
+exclude = ["**/test_*", "**/*_test.go", "**/vendor/**", "**/testdata/**", "**/crossval/**"]

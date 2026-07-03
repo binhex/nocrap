@@ -1,0 +1,128 @@
+[
+  {
+    "name": "all_branches",
+    "file": "corpus_py/branches.py",
+    "cc": 11,
+    "coverage_percent": 70.8,
+    "crap": 14.0
+  },
+  {
+    "name": "very_complex",
+    "file": "corpus_py/complex.py",
+    "cc": 10,
+    "coverage_percent": 84.2,
+    "crap": 10.39
+  },
+  {
+    "name": "async_func",
+    "file": "corpus_py/edge_cases.py",
+    "cc": 1,
+    "coverage_percent": 50.0,
+    "crap": 1.12
+  },
+  {
+    "name": "docstring_only",
+    "file": "corpus_py/edge_cases.py",
+    "cc": 1,
+    "coverage_percent": 0.0,
+    "crap": 2.0
+  },
+  {
+    "name": "empty_pass",
+    "file": "corpus_py/edge_cases.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "match_case",
+    "file": "corpus_py/edge_cases.py",
+    "cc": 3,
+    "coverage_percent": 100.0,
+    "crap": 3.0
+  },
+  {
+    "name": "single_line",
+    "file": "corpus_py/edge_cases.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "with_lambda",
+    "file": "corpus_py/edge_cases.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "__init__",
+    "file": "corpus_py/nested.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "add",
+    "file": "corpus_py/nested.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "inner",
+    "file": "corpus_py/nested.py",
+    "cc": 0,
+    "coverage_percent": 100.0,
+    "crap": 0.0
+  },
+  {
+    "name": "outer",
+    "file": "corpus_py/nested.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "static_help",
+    "file": "corpus_py/nested.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "value_squared",
+    "file": "corpus_py/nested.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "with_decorator",
+    "file": "corpus_py/nested.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "add",
+    "file": "corpus_py/simple.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "always_true",
+    "file": "corpus_py/simple.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  },
+  {
+    "name": "identity",
+    "file": "corpus_py/simple.py",
+    "cc": 1,
+    "coverage_percent": 100.0,
+    "crap": 1.0
+  }
+]

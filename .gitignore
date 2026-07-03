@@ -1,0 +1,6 @@
+/nocrap
+*.out
+*.test
+__pycache__/
+*.pyc
+.venv/
