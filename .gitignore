@@ -9,3 +9,4 @@ __pycache__/
 !internal/coverage/testdata/python/.coverage.json
 crossval/coverage.json
 !docs/specs/
+!docs/plans/
