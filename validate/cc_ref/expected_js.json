@@ -1,0 +1,7 @@
+{
+  "switch_fallthrough": 5,
+  "optional_chaining": 2,
+  "nullish_coalescing": 3,
+  "for_in_loop": 2,
+  "for_of_loop": 2
+}

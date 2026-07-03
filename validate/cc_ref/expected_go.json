@@ -1,0 +1,6 @@
+{
+  "type_switch": 3,
+  "select_statement": 3,
+  "defer_statement": 2,
+  "go_statement": 1
+}

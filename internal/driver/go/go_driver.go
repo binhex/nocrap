@@ -209,20 +209,19 @@ func countGoCC(node *sitter.Node, cc *int) {
 		*cc++
 	case "for_statement":
 		*cc++
-	case "expression_switch_statement":
-		*cc++
-	case "type_switch_statement":
-		*cc++
 	case "expression_case":
 		*cc++
 	case "type_case":
 		*cc++
-	case "default_case":
-		*cc++
-	case "select_statement":
-		*cc++
 	case "communication_case":
 		*cc++
+	case "default_case":
+		// Count default in expression switches (matches radon ground truth),
+		// but NOT in type switches or selects (matches gocyclo behavior).
+		parent := node.Parent()
+		if parent != nil && parent.Type() == "expression_switch_statement" {
+			*cc++
+		}
 	case "&&", "||":
 		*cc++
 	}

@@ -1,0 +1,8 @@
+{
+  "lcov_full": {"process": 76.92},
+  "lcov_half": {"process": 38.46},
+  "lcov_none": {"process": 0.0},
+  "cover_full": {"sum": 66.67},
+  "cover_half": {"sum": 41.67},
+  "cover_partial": {"sum": 25.0}
+}

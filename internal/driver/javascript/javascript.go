@@ -226,7 +226,18 @@ func countJSCC(node *sitter.Node, cc *int) {
 		*cc++
 	case "ternary_expression":
 		*cc++
-	case "optional_chain_expression":
+	case "optional_chain":
+		// Count the optional chain only at the outermost level.
+		// When chained (e.g. a?.b?.c), inner ?. operators are nested
+		// inside a member_expression whose parent is also a member_expression.
+		// Skip those to avoid counting each ?. in a chain separately.
+		parent := node.Parent()
+		if parent != nil && parent.Type() == "member_expression" {
+			grandparent := parent.Parent()
+			if grandparent != nil && grandparent.Type() == "member_expression" {
+				break
+			}
+		}
 		*cc++
 	case "&&", "||", "??":
 		*cc++
