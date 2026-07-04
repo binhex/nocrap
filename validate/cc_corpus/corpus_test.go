@@ -31,7 +31,7 @@ type expectedData struct {
 type langEntry struct {
 	name       string
 	driver     driver.Driver
-	ext       string
+	ext        string
 	fixtureDir string
 }
 

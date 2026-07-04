@@ -240,5 +240,3 @@ func (d *PythonDriver) CalcComplexity(source []byte, fn driver.Function) (int, e
 	}
 	return 1, nil
 }
-
-
