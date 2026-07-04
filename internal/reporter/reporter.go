@@ -38,6 +38,10 @@ func New(rootDir string) *Reporter {
 }
 
 func (r *Reporter) RenderFunctionTable(scores []engine.FunctionScore, topN int) {
+	r.renderFunctionTable(os.Stdout, scores, topN)
+}
+
+func (r *Reporter) renderFunctionTable(w io.Writer, scores []engine.FunctionScore, topN int) {
 	sorted := make([]engine.FunctionScore, len(scores))
 	copy(sorted, scores)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CRAP > sorted[j].CRAP })
@@ -46,9 +50,9 @@ func (r *Reporter) RenderFunctionTable(scores []engine.FunctionScore, topN int) 
 		sorted = sorted[:topN]
 	}
 
-	fmt.Println("\n── CRAP by Function ──")
-	fmt.Printf("%-10s %-5s %-9s %-30s %s\n", "CRAP", "CC", "Coverage", "Function", "File")
-	fmt.Println(strings.Repeat("─", r.width))
+	fmt.Fprintln(w, "\n── CRAP by Function ──")
+	fmt.Fprintf(w, "%-10s %-5s %-9s %-30s %s\n", "CRAP", "CC", "Coverage", "Function", "File")
+	fmt.Fprintln(w, strings.Repeat("─", r.width))
 
 	for _, s := range sorted {
 		cc := colorize(s.CRAP)
@@ -57,7 +61,7 @@ func (r *Reporter) RenderFunctionTable(scores []engine.FunctionScore, topN int) 
 		relPath := r.relativePath(s.File)
 		fileDisplay := truncateMiddle(relPath, r.width-60)
 
-		fmt.Printf("%s%-8.2f%s  %-5d %-9s %-30s %s\n",
+		fmt.Fprintf(w, "%s%-8.2f%s  %-5d %-9s %-30s %s\n",
 			cc, s.CRAP, colorReset, s.CC, coverageStr, funcName, fileDisplay)
 	}
 }
@@ -68,13 +72,14 @@ type fileSummary struct {
 	countAbove int
 }
 
-func (r *Reporter) RenderFileSummary(scores []engine.FunctionScore, topN int, threshold float64) {
-	byFile := make(map[string]*fileSummary)
+func groupScores(scores []engine.FunctionScore, threshold float64, keyFn func(engine.FunctionScore) string) []*fileSummary {
+	byGroup := make(map[string]*fileSummary)
 	for _, s := range scores {
-		fs, ok := byFile[s.File]
-		if !ok {
-			fs = &fileSummary{file: s.File, maxCRAP: s.CRAP}
-			byFile[s.File] = fs
+		key := keyFn(s)
+		fs := byGroup[key]
+		if fs == nil {
+			fs = &fileSummary{file: key, maxCRAP: s.CRAP}
+			byGroup[key] = fs
 		}
 		if s.CRAP > fs.maxCRAP {
 			fs.maxCRAP = s.CRAP
@@ -83,66 +88,38 @@ func (r *Reporter) RenderFileSummary(scores []engine.FunctionScore, topN int, th
 			fs.countAbove++
 		}
 	}
-
-	summaries := make([]*fileSummary, 0, len(byFile))
-	for _, fs := range byFile {
+	summaries := make([]*fileSummary, 0, len(byGroup))
+	for _, fs := range byGroup {
 		summaries = append(summaries, fs)
 	}
 	sort.Slice(summaries, func(i, j int) bool { return summaries[i].maxCRAP > summaries[j].maxCRAP })
+	return summaries
+}
 
+func renderGrouped(w io.Writer, label string, summaries []*fileSummary, topN int, r *Reporter) {
 	if topN > 0 && topN < len(summaries) {
 		summaries = summaries[:topN]
 	}
 
-	fmt.Println("\n── CRAP by File ──")
-	fmt.Printf("%-10s %-10s %s\n", "CRAP (max)", "#>=thr", "File")
-	fmt.Println(strings.Repeat("─", r.width))
+	fmt.Fprintln(w, "\n── CRAP by "+label+" ──")
+	fmt.Fprintf(w, "%-10s %-10s %s\n", "CRAP (max)", "#>=thr", label)
+	fmt.Fprintln(w, strings.Repeat("─", r.width))
 
 	for _, fs := range summaries {
 		cc := colorize(fs.maxCRAP)
-		relPath := r.relativePath(fs.file)
-		fileDisplay := truncateMiddle(relPath, r.width-25)
-		fmt.Printf("%s%-8.2f%s  %-10d %s\n",
-			cc, fs.maxCRAP, colorReset, fs.countAbove, fileDisplay)
+		fmt.Fprintf(w, "%s%-8.2f%s  %-10d %s\n",
+			cc, fs.maxCRAP, colorReset, fs.countAbove, truncateMiddle(fs.file, r.width-25))
 	}
 }
 
+func (r *Reporter) RenderFileSummary(scores []engine.FunctionScore, topN int, threshold float64) {
+	summaries := groupScores(scores, threshold, func(s engine.FunctionScore) string { return s.File })
+	renderGrouped(os.Stdout, "File", summaries, topN, r)
+}
+
 func (r *Reporter) RenderFolderSummary(scores []engine.FunctionScore, topN int, threshold float64) {
-	byFolder := make(map[string]*fileSummary)
-	for _, s := range scores {
-		dir := filepath.Dir(s.File)
-		fs, ok := byFolder[dir]
-		if !ok {
-			fs = &fileSummary{file: dir, maxCRAP: s.CRAP}
-			byFolder[dir] = fs
-		}
-		if s.CRAP > fs.maxCRAP {
-			fs.maxCRAP = s.CRAP
-		}
-		if s.CRAP >= threshold {
-			fs.countAbove++
-		}
-	}
-
-	summaries := make([]*fileSummary, 0, len(byFolder))
-	for _, fs := range byFolder {
-		summaries = append(summaries, fs)
-	}
-	sort.Slice(summaries, func(i, j int) bool { return summaries[i].maxCRAP > summaries[j].maxCRAP })
-
-	if topN > 0 && topN < len(summaries) {
-		summaries = summaries[:topN]
-	}
-
-	fmt.Println("\n── CRAP by Folder ──")
-	fmt.Printf("%-10s %-10s %s\n", "CRAP (max)", "#>=thr", "Folder")
-	fmt.Println(strings.Repeat("─", r.width))
-
-	for _, fs := range summaries {
-		cc := colorize(fs.maxCRAP)
-		fmt.Printf("%s%-8.2f%s  %-10d %s\n",
-			cc, fs.maxCRAP, colorReset, fs.countAbove, truncateMiddle(fs.file, r.width-25))
-	}
+	summaries := groupScores(scores, threshold, func(s engine.FunctionScore) string { return filepath.Dir(s.File) })
+	renderGrouped(os.Stdout, "Folder", summaries, topN, r)
 }
 
 func WriteJSON(scores []engine.FunctionScore, w io.Writer) error {

@@ -61,79 +61,80 @@ func CalcComplexityWithLanguage(source []byte, fn driver.Function, lang *sitter.
 	return cc, nil
 }
 
-func walkForFunctions(root *sitter.Node, source []byte, filePath string) []driver.Function {
-	var funcs []driver.Function
-	var currentClass string
-
-	var walk func(node *sitter.Node)
-	walk = func(node *sitter.Node) {
-		switch node.Type() {
-		case "class_declaration":
-			nameNode := node.ChildByFieldName("name")
-			prevClass := currentClass
-			if nameNode != nil {
-				currentClass = nameNode.Content(source)
-			}
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
-			currentClass = prevClass
-			return // do NOT recurse via default — body explicitly walked above
-
-		case "function_declaration":
-			fn := extractJSFunction(node, source, filePath, currentClass)
-			funcs = append(funcs, fn)
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
-			return
-
-		case "method_definition":
-			fn := extractJSMethod(node, source, filePath, currentClass)
-			funcs = append(funcs, fn)
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
-			return
-
-		case "variable_declarator":
-			value := node.ChildByFieldName("value")
-			if value != nil && (value.Type() == "function_expression" || value.Type() == "arrow_function") {
-				nameNode := node.ChildByFieldName("name")
-				if nameNode != nil {
-					name := nameNode.Content(source)
-					startLine := int(value.StartPoint().Row) + 1
-					endLine := int(value.EndPoint().Row) + 1
-					nameToUse := name
-					if currentClass != "" {
-						nameToUse = currentClass + "." + name
-					}
-					funcs = append(funcs, driver.Function{
-						Name:              nameToUse,
-						File:              filePath,
-						StartLine:         startLine,
-						EndLine:           endLine,
-						CoverageStartLine: startLine,
-						Package:           currentClass,
-					})
-				}
-			}
-			return
-
-		default:
-			for i := 0; i < int(node.ChildCount()); i++ {
-				child := node.Child(i)
-				if child != nil {
-					walk(child)
-				}
-			}
-		}
+func handleVarDeclarator(node *sitter.Node, source []byte, filePath, className string) *driver.Function {
+	value := node.ChildByFieldName("value")
+	if value == nil {
+		return nil
 	}
-	walk(root)
-	return funcs
+	if value.Type() != "function_expression" && value.Type() != "arrow_function" {
+		return nil
+	}
+	nameNode := node.ChildByFieldName("name")
+	if nameNode == nil {
+		return nil
+	}
+	name := nameNode.Content(source)
+	if className != "" {
+		name = className + "." + name
+	}
+	return &driver.Function{
+		Name:              name,
+		File:              filePath,
+		StartLine:         int(value.StartPoint().Row) + 1,
+		EndLine:           int(value.EndPoint().Row) + 1,
+		CoverageStartLine: int(value.StartPoint().Row) + 1,
+		Package:           className,
+	}
+}
+
+func walkForFunctions(root *sitter.Node, source []byte, filePath string) []driver.Function {
+	w := &jsWalker{source: source, filePath: filePath}
+	w.walk(root)
+	return w.funcs
+}
+
+type jsWalker struct {
+	source       []byte
+	filePath     string
+	funcs        []driver.Function
+	currentClass string
+}
+
+func (w *jsWalker) walkClass(node *sitter.Node) {
+	prevClass := w.currentClass
+	if nameNode := node.ChildByFieldName("name"); nameNode != nil {
+		w.currentClass = nameNode.Content(w.source)
+	}
+	w.walk(node.ChildByFieldName("body"))
+	w.currentClass = prevClass
+}
+
+func (w *jsWalker) walk(node *sitter.Node) {
+	if node == nil {
+		return
+	}
+	switch node.Type() {
+	case "class_declaration":
+		w.walkClass(node)
+	case "function_declaration":
+		w.funcs = append(w.funcs, extractJSFunction(node, w.source, w.filePath, w.currentClass))
+		w.walk(node.ChildByFieldName("body"))
+	case "method_definition":
+		w.funcs = append(w.funcs, extractJSMethod(node, w.source, w.filePath, w.currentClass))
+		w.walk(node.ChildByFieldName("body"))
+	case "variable_declarator":
+		if fn := handleVarDeclarator(node, w.source, w.filePath, w.currentClass); fn != nil {
+			w.funcs = append(w.funcs, *fn)
+		}
+	default:
+		w.walkChildren(node)
+	}
+}
+
+func (w *jsWalker) walkChildren(node *sitter.Node) {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		w.walk(node.Child(i))
+	}
 }
 
 func extractJSFunction(node *sitter.Node, source []byte, filePath, className string) driver.Function {
@@ -208,53 +209,44 @@ func findJSFunctionNode(root *sitter.Node, source []byte, fn driver.Function) *s
 	return found
 }
 
-func countJSCC(node *sitter.Node, cc *int) {
-	switch node.Type() {
-	case "if_statement":
-		*cc++
-	case "while_statement":
-		*cc++
-	case "for_statement":
-		*cc++
-	case "for_in_statement":
-		*cc++
-	case "do_statement":
-		*cc++
-	case "catch_clause":
-		*cc++
-	case "switch_case", "switch_default":
-		*cc++
-	case "ternary_expression":
-		*cc++
-	case "optional_chain":
-		// Count the optional chain only at the outermost level.
-		// When chained (e.g. a?.b?.c), inner ?. operators are nested
-		// inside a member_expression whose grandparent also has an
-		// optional_chain child. Skip those to avoid counting each
-		// ?. in a chain separately.
-		parent := node.Parent()
-		if parent != nil && parent.Type() == "member_expression" {
-			grandparent := parent.Parent()
-			if grandparent != nil && grandparent.Type() == "member_expression" {
-				hasChain := false
-				for i := uint32(0); i < grandparent.ChildCount(); i++ {
-					if child := grandparent.Child(int(i)); child != nil && child.Type() == "optional_chain" {
-						hasChain = true
-						break
-					}
-				}
-				if hasChain {
-					break
-				}
-			}
+func isJSBranchNode(nodeType string) bool {
+	switch nodeType {
+	case "if_statement", "while_statement", "for_statement",
+		"for_in_statement", "do_statement", "catch_clause",
+		"switch_case", "switch_default", "ternary_expression",
+		"&&", "||", "??", "optional_chain":
+		return true
+	}
+	return false
+}
+
+func isOutermostOptionalChain(node *sitter.Node) bool {
+	parent := node.Parent()
+	if parent == nil || parent.Type() != "member_expression" {
+		return true
+	}
+	grandparent := parent.Parent()
+	if grandparent == nil || grandparent.Type() != "member_expression" {
+		return true
+	}
+	for i := uint32(0); i < grandparent.ChildCount(); i++ {
+		if child := grandparent.Child(int(i)); child != nil && child.Type() == "optional_chain" {
+			return false
 		}
-		*cc++
-	case "&&", "||", "??":
+	}
+	return true
+}
+
+func countJSCC(node *sitter.Node, cc *int) {
+	if node.Type() == "optional_chain" {
+		if isOutermostOptionalChain(node) {
+			*cc++
+		}
+	} else if isJSBranchNode(node.Type()) {
 		*cc++
 	}
 	for i := 0; i < int(node.ChildCount()); i++ {
-		child := node.Child(i)
-		if child != nil {
+		if child := node.Child(i); child != nil {
 			countJSCC(child, cc)
 		}
 	}

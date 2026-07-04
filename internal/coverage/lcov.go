@@ -8,6 +8,52 @@ import (
 	"strings"
 )
 
+func parseLCovDA(line string) (lineNo, count int, ok bool) {
+	parts := strings.SplitN(line[3:], ",", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	ln, err1 := strconv.Atoi(parts[0])
+	cnt, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil {
+		return 0, 0, false
+	}
+	return ln, cnt, true
+}
+
+func processLCovLine(line string, state *lcovState) {
+	line = strings.TrimSpace(line)
+	switch {
+	case strings.HasPrefix(line, "SF:"):
+		state.currentFile = line[3:]
+		state.coveredLines = make(map[int]bool)
+		state.totalLines = 0
+	case strings.HasPrefix(line, "DA:"):
+		if lineNo, count, ok := parseLCovDA(line); ok {
+			state.totalLines++
+			if count > 0 {
+				state.coveredLines[lineNo] = true
+			}
+		}
+	case line == "end_of_record":
+		if state.currentFile != "" {
+			state.result[state.currentFile] = &CoverageData{
+				CoveredLines: state.coveredLines,
+				TotalLines:   state.totalLines,
+			}
+		}
+		state.currentFile = ""
+		state.coveredLines = nil
+	}
+}
+
+type lcovState struct {
+	result       CoverageMap
+	currentFile  string
+	coveredLines map[int]bool
+	totalLines   int
+}
+
 // ParseLCOV reads an LCOV tracefile and returns a CoverageMap.
 // Format: SF:<path>, DA:<line>,<hit>, LH:<lines_hit>, LF:<lines_found>, end_of_record
 func ParseLCOV(path string) (CoverageMap, error) {
@@ -17,49 +63,13 @@ func ParseLCOV(path string) (CoverageMap, error) {
 	}
 	defer f.Close()
 
-	result := make(CoverageMap)
+	state := &lcovState{result: make(CoverageMap)}
 	scanner := bufio.NewScanner(f)
-	var currentFile string
-	var coveredLines map[int]bool
-	var totalLines int
-
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		switch {
-		case strings.HasPrefix(line, "SF:"):
-			currentFile = line[3:]
-			coveredLines = make(map[int]bool)
-			totalLines = 0
-		case strings.HasPrefix(line, "DA:"):
-			parts := strings.SplitN(line[3:], ",", 2)
-			if len(parts) != 2 {
-				continue
-			}
-			lineNo, err1 := strconv.Atoi(parts[0])
-			count, err2 := strconv.Atoi(parts[1])
-			if err1 != nil || err2 != nil {
-				continue
-			}
-			totalLines++
-			if count > 0 {
-				if coveredLines == nil {
-					coveredLines = make(map[int]bool)
-				}
-				coveredLines[lineNo] = true
-			}
-		case line == "end_of_record":
-			if currentFile != "" && coveredLines != nil {
-				result[currentFile] = &CoverageData{
-					CoveredLines: coveredLines,
-					TotalLines:   totalLines,
-				}
-			}
-			currentFile = ""
-			coveredLines = nil
-		}
+		processLCovLine(scanner.Text(), state)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("reading LCOV file %s: %w", path, err)
 	}
-	return result, nil
+	return state.result, nil
 }

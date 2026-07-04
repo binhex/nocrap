@@ -18,6 +18,20 @@ func New() *GoDriver {
 func (d *GoDriver) Name() string         { return "go" }
 func (d *GoDriver) Extensions() []string { return []string{".go"} }
 
+func extractPackageName(root *sitter.Node, source []byte) string {
+	for i := uint32(0); i < root.ChildCount(); i++ {
+		child := root.Child(int(i))
+		if child != nil && child.Type() == "package_clause" {
+			for j := uint32(0); j < child.ChildCount(); j++ {
+				if gc := child.Child(int(j)); gc != nil && gc.Type() == "package_identifier" {
+					return gc.Content(source)
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func (d *GoDriver) FindFunctions(source []byte, filePath string) ([]driver.Function, error) {
 	parser := sitter.NewParser()
 	parser.SetLanguage(golang.GetLanguage())
@@ -29,49 +43,24 @@ func (d *GoDriver) FindFunctions(source []byte, filePath string) ([]driver.Funct
 
 	root := tree.RootNode()
 	var funcs []driver.Function
-
-	packageName := ""
-	for i := uint32(0); i < root.ChildCount(); i++ {
-		child := root.Child(int(i))
-		if child != nil && child.Type() == "package_clause" {
-			for j := uint32(0); j < child.ChildCount(); j++ {
-				gc := child.Child(int(j))
-				if gc != nil && gc.Type() == "package_identifier" {
-					packageName = gc.Content(source)
-				}
-			}
-		}
-	}
+	packageName := extractPackageName(root, source)
 
 	var walk func(node *sitter.Node)
 	walk = func(node *sitter.Node) {
-		switch node.Type() {
-		case "function_declaration":
-			fn := extractGoFunc(node, source, filePath, packageName)
-			funcs = append(funcs, fn)
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
-
-		case "method_declaration":
-			fn := extractGoMethod(node, source, filePath, packageName)
-			funcs = append(funcs, fn)
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
+		if node == nil {
+			return
 		}
-
+		if node.Type() == "function_declaration" {
+			funcs = append(funcs, extractGoFunc(node, source, filePath, packageName))
+		} else if node.Type() == "method_declaration" {
+			funcs = append(funcs, extractGoMethod(node, source, filePath, packageName))
+		}
+		walk(node.ChildByFieldName("body"))
 		for i := uint32(0); i < node.ChildCount(); i++ {
-			child := node.Child(int(i))
-			if child != nil {
-				walk(child)
-			}
+			walk(node.Child(int(i)))
 		}
 	}
 	walk(root)
-
 	return funcs, nil
 }
 
@@ -82,22 +71,27 @@ func extractTypeName(node *sitter.Node, source []byte) string {
 	case "type_identifier":
 		return node.Content(source)
 	case "pointer_type":
-		// pointer_type has child * then type_identifier
-		for i := uint32(0); i < node.ChildCount(); i++ {
-			c := node.Child(int(i))
-			if c != nil && c.Type() == "type_identifier" {
-				return c.Content(source)
-			}
-		}
-		return ""
+		return findChildWithType(node, "type_identifier", source)
 	case "parameter_declaration":
-		// Look for the type child (either type_identifier or pointer_type)
-		for i := uint32(0); i < node.ChildCount(); i++ {
-			c := node.Child(int(i))
-			if c != nil {
-				if t := extractTypeName(c, source); t != "" {
-					return t
-				}
+		return findChildTypeName(node, source)
+	}
+	return ""
+}
+
+func findChildWithType(node *sitter.Node, targetType string, source []byte) string {
+	for i := uint32(0); i < node.ChildCount(); i++ {
+		if c := node.Child(int(i)); c != nil && c.Type() == targetType {
+			return c.Content(source)
+		}
+	}
+	return ""
+}
+
+func findChildTypeName(node *sitter.Node, source []byte) string {
+	for i := uint32(0); i < node.ChildCount(); i++ {
+		if c := node.Child(int(i)); c != nil {
+			if t := extractTypeName(c, source); t != "" {
+				return t
 			}
 		}
 	}
@@ -204,31 +198,25 @@ func findGoFuncNode(root *sitter.Node, source []byte, fn driver.Function) *sitte
 }
 
 func countGoCC(node *sitter.Node, cc *int) {
-	switch node.Type() {
-	case "if_statement":
-		*cc++
-	case "for_statement":
-		*cc++
-	case "expression_case":
-		*cc++
-	case "type_case":
-		*cc++
-	case "communication_case":
-		*cc++
-	case "default_case":
-		// Count default in expression switches (matches radon ground truth),
-		// but NOT in type switches or selects (matches gocyclo behavior).
-		parent := node.Parent()
-		if parent != nil && parent.Type() == "expression_switch_statement" {
-			*cc++
-		}
-	case "&&", "||":
+	if isGoBranch(node) {
 		*cc++
 	}
 	for i := uint32(0); i < node.ChildCount(); i++ {
-		child := node.Child(int(i))
-		if child != nil {
+		if child := node.Child(int(i)); child != nil {
 			countGoCC(child, cc)
 		}
 	}
+}
+
+func isGoBranch(node *sitter.Node) bool {
+	switch node.Type() {
+	case "if_statement", "for_statement", "expression_case",
+		"type_case", "communication_case", "&&", "||":
+		return true
+	case "default_case":
+		if parent := node.Parent(); parent != nil && parent.Type() == "expression_switch_statement" {
+			return true
+		}
+	}
+	return false
 }

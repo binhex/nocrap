@@ -34,28 +34,40 @@ var drivers = []driver.Driver{
 	goDriver.New(),
 }
 
+func processLang(lang string, langFiles []string, drv driver.Driver, covMap coverage.CoverageMap) []FunctionScore {
+	var scores []FunctionScore
+	for _, filePath := range langFiles {
+		fileScores, err := analyzeFile(drv, filePath, covMap)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			continue
+		}
+		scores = append(scores, fileScores...)
+	}
+	return scores
+}
+
+func filterByLang(byLang map[string][]string, targetLang string) map[string][]string {
+	if targetLang == "" {
+		return byLang
+	}
+	filtered := make(map[string][]string)
+	for lang, langFiles := range byLang {
+		if strings.EqualFold(lang, targetLang) {
+			filtered[lang] = langFiles
+		}
+	}
+	return filtered
+}
+
 func Analyze(paths []string, cfg *config.Config) ([]FunctionScore, error) {
 	files, err := collectFiles(paths, cfg.Exclude)
 	if err != nil {
 		return nil, fmt.Errorf("collecting files: %w", err)
 	}
 
-	byLang := groupByLanguage(files)
-
-	// If a specific language is forced, only keep that language's files
-	if cfg.Lang != "" {
-		filtered := make(map[string][]string)
-		for lang, langFiles := range byLang {
-			if strings.EqualFold(lang, cfg.Lang) {
-				filtered[lang] = langFiles
-			}
-		}
-		byLang = filtered
-	}
-
-	// Compute source directories for coverage file resolution
+	byLang := filterByLang(groupByLanguage(files), cfg.Lang)
 	sourceDirs := computeSourceDirs(paths)
-
 	var allScores []FunctionScore
 
 	for lang, langFiles := range byLang {
@@ -63,24 +75,39 @@ func Analyze(paths []string, cfg *config.Config) ([]FunctionScore, error) {
 		if drv == nil {
 			continue
 		}
-
 		covPath := cfg.CoveragePathForLang(lang)
 		covMap, err := loadCoverage(covPath, lang, sourceDirs)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: could not load coverage for %s: %v\n", lang, err)
 		}
-
-		for _, filePath := range langFiles {
-			scores, err := analyzeFile(drv, filePath, covMap)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-				continue
-			}
-			allScores = append(allScores, scores...)
-		}
+		allScores = append(allScores, processLang(lang, langFiles, drv, covMap)...)
 	}
 
 	return allScores, nil
+}
+
+func walkDirForFiles(path string, excludes []string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(path, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		for _, pattern := range excludes {
+			if matchesExclude(pattern, p) {
+				return nil
+			}
+		}
+		files = append(files, p)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walking %s: %w", path, err)
+	}
+	return files, nil
 }
 
 func collectFiles(paths []string, excludes []string) ([]string, error) {
@@ -91,25 +118,11 @@ func collectFiles(paths []string, excludes []string) ([]string, error) {
 			return nil, fmt.Errorf("stat %s: %w", p, err)
 		}
 		if info.IsDir() {
-			err := filepath.WalkDir(p, func(path string, d os.DirEntry, err error) error {
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-					return nil
-				}
-				if d.IsDir() {
-					return nil
-				}
-				for _, pattern := range excludes {
-					if matchesExclude(pattern, path) {
-						return nil
-					}
-				}
-				files = append(files, path)
-				return nil
-			})
+			dirFiles, err := walkDirForFiles(p, excludes)
 			if err != nil {
-				return nil, fmt.Errorf("walking %s: %w", p, err)
+				return nil, err
 			}
+			files = append(files, dirFiles...)
 		} else {
 			files = append(files, p)
 		}
@@ -132,6 +145,38 @@ func matchesExclude(pattern, path string) bool {
 	return false
 }
 
+func matchGlobstarSuffix(path, suffix string) bool {
+	if strings.ContainsAny(suffix, "*?[") {
+		for _, comp := range strings.Split(path, "/") {
+			if ok, _ := filepath.Match(suffix, comp); ok {
+				return true
+			}
+		}
+		return false
+	}
+	return strings.Contains(path, suffix)
+}
+
+func matchGlobstarMiddle(path string, segs []string) bool {
+	remaining := path
+	for i, seg := range segs {
+		seg = strings.Trim(seg, "/")
+		if seg == "" {
+			continue
+		}
+		last := i == len(segs)-1
+		if idx := strings.Index(remaining, "/"+seg+"/"); idx >= 0 {
+			remaining = remaining[idx+len(seg)+1:]
+			continue
+		}
+		if last && strings.HasSuffix(remaining, "/"+seg) {
+			return true
+		}
+		return false
+	}
+	return true
+}
+
 func matchGlobstar(pattern, path string) bool {
 	parts := strings.Split(pattern, "**")
 	if len(parts) == 1 {
@@ -146,52 +191,15 @@ func matchGlobstar(pattern, path string) bool {
 		path = path[len(prefix):]
 		path = strings.TrimPrefix(path, "/")
 	}
-	// Check suffix (after last **) with glob support
+	// Check suffix (after last **)
 	last := parts[len(parts)-1]
 	if last != "" {
-		suffix := strings.TrimPrefix(last, "/")
-		if strings.ContainsAny(suffix, "*?[") {
-			for _, comp := range strings.Split(path, "/") {
-				if ok, _ := filepath.Match(suffix, comp); ok {
-					return true
-				}
-			}
-			return false
-		}
-		if strings.Contains(path, suffix) {
-			return true
-		}
-		return false
+		return matchGlobstarSuffix(path, strings.TrimPrefix(last, "/"))
 	}
-	// ** at end (suffix empty) — check middle parts exist in path
-	// e.g., "**/vendor/**" → parts=["", "/vendor/", ""]
-	// Each middle segment must appear as a path component, in order.
+	// ** at end — check middle parts exist in path, in order
 	if len(parts) > 2 {
-		remaining := path
-		segs := parts[1 : len(parts)-1]
-		for i, seg := range segs {
-			seg = strings.Trim(seg, "/")
-			if seg == "" {
-				continue
-			}
-			last := i == len(segs)-1
-			// Check as path component with / on both sides
-			idx := strings.Index(remaining, "/"+seg+"/")
-			// Check as final path component (e.g., path ending with /vendor)
-			if idx < 0 && last {
-				if strings.HasSuffix(remaining, "/"+seg) {
-					return true
-				}
-				return false
-			}
-			if idx < 0 {
-				return false
-			}
-			remaining = remaining[idx+len(seg)+1:]
-		}
-		return true
+		return matchGlobstarMiddle(path, parts[1:len(parts)-1])
 	}
-	// Pattern like "src/**" with only prefix and trailing ** — prefix already checked
 	return true
 }
 
@@ -352,6 +360,23 @@ func analyzeFile(drv driver.Driver, filePath string, covMap coverage.CoverageMap
 	return scores, nil
 }
 
+func isCodeLine(line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return false
+	}
+	if line[0] == '#' {
+		return false
+	}
+	if len(line) >= 2 {
+		switch line[:2] {
+		case "//", "/*", "*/":
+			return false
+		}
+	}
+	return true
+}
+
 func countExecutableLines(source []byte, startLine, endLine int) int {
 	lines := strings.Split(string(source), "\n")
 	count := 0
@@ -359,42 +384,31 @@ func countExecutableLines(source []byte, startLine, endLine int) int {
 		if ln < 1 || ln > len(lines) {
 			continue
 		}
-		stripped := strings.TrimSpace(lines[ln-1])
-		if stripped == "" {
-			continue
+		if isCodeLine(lines[ln-1]) {
+			count++
 		}
-		if strings.HasPrefix(stripped, "#") || strings.HasPrefix(stripped, "//") {
-			continue
-		}
-		if strings.HasPrefix(stripped, "/*") || strings.HasPrefix(stripped, "*/") {
-			continue
-		}
-		count++
 	}
 	return count
 }
 
-func computeCoverage(covMap coverage.CoverageMap, filePath string, startLine, endLine int, source []byte) float64 {
-	data, ok := covMap[filePath]
-	if !ok {
-		base := filepath.Base(filePath)
-		data, ok = covMap[base]
+func findCoverageData(covMap coverage.CoverageMap, filePath string) *coverage.CoverageData {
+	if data, ok := covMap[filePath]; ok && data != nil {
+		return data
 	}
-	if !ok || data == nil {
-		// Try suffix matching: coverage keys are often relative paths ("src/pkg/file.py")
-		// but WalkDir produces absolute paths ("/project/src/pkg/file.py").
-		for covKey, covData := range covMap {
-			// Only match if the coverage key is a path-suffix at a path boundary.
-			// e.g., "/project/src/pkg/file.py" ends with "/src/pkg/file.py" ✓
-			// but "/project/old_cli.py" must NOT match covKey "cli.py" (handled by basename above).
-			if strings.HasSuffix(filePath, "/"+covKey) {
-				data = covData
-				ok = true
-				break
-			}
+	if data, ok := covMap[filepath.Base(filePath)]; ok && data != nil {
+		return data
+	}
+	for covKey, covData := range covMap {
+		if strings.HasSuffix(filePath, "/"+covKey) && covData != nil {
+			return covData
 		}
 	}
-	if !ok || data == nil {
+	return nil
+}
+
+func computeCoverage(covMap coverage.CoverageMap, filePath string, startLine, endLine int, source []byte) float64 {
+	data := findCoverageData(covMap, filePath)
+	if data == nil {
 		return 0.0
 	}
 
