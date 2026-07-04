@@ -1,0 +1,19 @@
+        -:    0:Source:testdata/c/simple.c
+        -:    0:Graph:simple.gcno
+        -:    0:Data:simple.gcda
+        -:    0:Runs:1
+        -:    0:Programs:1
+        -:    1:
+        1:    2:int multiply(int a, int b) {
+        1:    3:    return a * b;
+        -:    4:}
+        -:    5:
+        1:    6:int divide(int a, int b) {
+        2:    7:    if (b == 0) return 0;
+    #####:    8:    return a / b;
+        -:    9:}
+        -:   10:
+        1:   11:int factorial(int n) {
+        3:   12:    if (n <= 1) return 1;
+        2:   13:    return n * factorial(n - 1);
+        -:   14:}

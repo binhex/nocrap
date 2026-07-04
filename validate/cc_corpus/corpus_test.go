@@ -1,6 +1,6 @@
 // Package cc_corpus_test verifies that 12 equivalent functions across Python, JS, TS,
-// and Go all produce the same cyclomatic complexity when run through nocrap's language
-// drivers. Expected values are radon-verified ground truth stored in expected.json.
+// Go, C, and C++ all produce the same cyclomatic complexity when run through nocrap's
+// language drivers. Expected values are radon-verified ground truth stored in expected.json.
 package cc_corpus_test
 
 import (
@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"nocrap/internal/driver"
+	cDriver "nocrap/internal/driver/c"
+	cppDriver "nocrap/internal/driver/cpp"
 	goDriver "nocrap/internal/driver/go"
 	"nocrap/internal/driver/javascript"
 	"nocrap/internal/driver/python"
@@ -21,18 +23,21 @@ import (
 type expectedData struct {
 	Functions map[string]int `json:"functions"`
 	SkipGo    []string       `json:"skip_go"`
+	SkipC     []string       `json:"skip_c"`
+	SkipCpp   []string       `json:"skip_cpp"`
 }
 
 // langEntry binds a language name to its driver and fixture extension.
 type langEntry struct {
-	name   string
-	driver driver.Driver
-	ext    string
+	name       string
+	driver     driver.Driver
+	ext       string
+	fixtureDir string
 }
 
 // TestCCEquivalenceAcrossLanguages verifies that every function in the
-// cross-language corpus has the same cyclomatic complexity in all four
-// supported languages, using expected.json as ground truth.
+// cross-language corpus has the same cyclomatic complexity in all supported
+// languages, using expected.json as ground truth.
 func TestCCEquivalenceAcrossLanguages(t *testing.T) {
 	raw, err := os.ReadFile("expected.json")
 	if err != nil {
@@ -43,34 +48,44 @@ func TestCCEquivalenceAcrossLanguages(t *testing.T) {
 		t.Fatalf("parsing expected.json: %v", err)
 	}
 
-	// Build skip set for Go (e.g. "try_catch" has no Go equivalent).
-	skipGo := make(map[string]bool, len(exp.SkipGo))
-	for _, name := range exp.SkipGo {
-		skipGo[name] = true
+	// Build skip sets per language.
+	skipByLang := make(map[string]map[string]bool)
+	addSkips := func(lang string, names []string) {
+		for _, name := range names {
+			if skipByLang[lang] == nil {
+				skipByLang[lang] = make(map[string]bool)
+			}
+			skipByLang[lang][name] = true
+		}
 	}
+	addSkips("go", exp.SkipGo)
+	addSkips("c", exp.SkipC)
+	addSkips("cpp", exp.SkipCpp)
 
 	// Map expected.json snake_case keys to the function name each driver
 	// returns from FindFunctions.
-	// Python, JavaScript, and TypeScript fixtures all use snake_case names.
-	// Go uses PascalCase prefixed with the package name ("fixtures.").
 	nameFor := map[string]func(string) string{
 		"python":     func(key string) string { return key },
 		"javascript": func(key string) string { return key },
 		"typescript": func(key string) string { return key },
 		"go":         snakeToGo,
+		"c":          func(key string) string { return key },
+		"cpp":        func(key string) string { return key },
 	}
 
 	languages := []langEntry{
-		{name: "python", driver: python.New(), ext: ".py"},
-		{name: "javascript", driver: javascript.New(), ext: ".js"},
-		{name: "typescript", driver: typescript.New(), ext: ".ts"},
-		{name: "go", driver: goDriver.New(), ext: ".go"},
+		{name: "python", driver: python.New(), ext: ".py", fixtureDir: "fixtures"},
+		{name: "javascript", driver: javascript.New(), ext: ".js", fixtureDir: "fixtures"},
+		{name: "typescript", driver: typescript.New(), ext: ".ts", fixtureDir: "fixtures"},
+		{name: "go", driver: goDriver.New(), ext: ".go", fixtureDir: "fixtures"},
+		{name: "c", driver: cDriver.New(), ext: ".c", fixtureDir: "fixtures_cc"},
+		{name: "cpp", driver: cppDriver.New(), ext: ".cpp", fixtureDir: "fixtures_cc"},
 	}
 
 	for _, lang := range languages {
 		lang := lang // capture
 		t.Run(lang.name, func(t *testing.T) {
-			fixturePath := filepath.Join("fixtures", "equivalence"+lang.ext)
+			fixturePath := filepath.Join(lang.fixtureDir, "equivalence"+lang.ext)
 			source, err := os.ReadFile(fixturePath)
 			if err != nil {
 				t.Fatalf("reading fixture %s: %v", fixturePath, err)
@@ -88,10 +103,11 @@ func TestCCEquivalenceAcrossLanguages(t *testing.T) {
 			}
 
 			toName := nameFor[lang.name]
+			skipSet := skipByLang[lang.name]
 
 			for key, expectedCC := range exp.Functions {
 				// Skip entries excluded for this language.
-				if lang.name == "go" && skipGo[key] {
+				if skipSet[key] {
 					continue
 				}
 

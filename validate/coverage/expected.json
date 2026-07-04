@@ -4,5 +4,8 @@
   "lcov_none": {"process": 0.0},
   "cover_full": {"sum": 66.67},
   "cover_half": {"sum": 41.67},
-  "cover_partial": {"sum": 25.0}
+  "cover_partial": {"sum": 25.0},
+  "gcov_full": {"add": 100.0, "sub": 100.0},
+  "gcov_half": {"add": 100.0, "sub": 0.0},
+  "gcov_none": {"add": 0.0, "sub": 0.0}
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"nocrap/internal/driver"
+	cppDriver "nocrap/internal/driver/cpp"
 	goDriver "nocrap/internal/driver/go"
 	"nocrap/internal/driver/typescript"
 )
@@ -50,6 +51,31 @@ func TestRefCCGo(t *testing.T) {
 
 	d := goDriver.New()
 	funcs, err := d.FindFunctions(source, "fixtures/ref_go.go")
+	if err != nil {
+		t.Fatalf("FindFunctions: %v", err)
+	}
+
+	for funcName, wantCC := range expected {
+		fn := findFunction(funcs, funcName)
+		if fn == nil {
+			t.Fatalf("function %q not found in fixture", funcName)
+		}
+		gotCC, err := d.CalcComplexity(source, *fn)
+		if err != nil {
+			t.Fatalf("CalcComplexity(%q): %v", funcName, err)
+		}
+		if gotCC != wantCC {
+			t.Errorf("CC for %q: got %d, want %d", funcName, gotCC, wantCC)
+		}
+	}
+}
+
+func TestRefCCCpp(t *testing.T) {
+	source := loadFixture(t, "../fixtures_ccpp/ref_cpp.cpp")
+	expected := loadExpected(t, "expected_cpp.json")
+
+	d := cppDriver.New()
+	funcs, err := d.FindFunctions(source, "fixtures_ccpp/ref_cpp.cpp")
 	if err != nil {
 		t.Fatalf("FindFunctions: %v", err)
 	}

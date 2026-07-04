@@ -2,6 +2,7 @@ package coverage_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,6 +71,48 @@ func TestLCOVCoverage(t *testing.T) {
 			}
 			if !validate.WithinTolerance(covPct, tt.want, 0.5) {
 				t.Errorf("CoveragePercent for lcov_%s: got %.2f, want %.2f", tt.variant, covPct, tt.want)
+			}
+		})
+	}
+}
+
+func loadExpectedJSON(t *testing.T) map[string]map[string]float64 {
+	t.Helper()
+	data, err := os.ReadFile("expected.json")
+	if err != nil {
+		t.Fatalf("reading expected.json: %v", err)
+	}
+	var expected map[string]map[string]float64
+	if err := json.Unmarshal(data, &expected); err != nil {
+		t.Fatalf("parsing expected.json: %v", err)
+	}
+	return expected
+}
+
+func TestGcovCoverage(t *testing.T) {
+	expected := loadExpectedJSON(t)
+
+	variants := []string{"full", "half", "none"}
+	for _, variant := range variants {
+		t.Run(variant, func(t *testing.T) {
+			covFile := fmt.Sprintf("fixtures/%s.gcov", variant)
+
+			cfg := config.DefaultConfig()
+			cfg.Coverage.C = covFile
+
+			scores, err := engine.Analyze([]string{"fixtures_c/add.c"}, cfg)
+			if err != nil {
+				t.Fatalf("Analyze: %v", err)
+			}
+
+			for _, s := range scores {
+				wantKey := "gcov_" + variant
+				wantPct := expected[wantKey][s.Name]
+				if !validate.WithinTolerance(s.CoveragePercent, wantPct, 0.5) {
+					t.Errorf("%s coverage = %.1f%%, want %.1f%% (\u00b10.5)",
+						s.Name, s.CoveragePercent, wantPct)
+				}
+				t.Logf("  %s: CC=%d, Cov=%.1f%%, CRAP=%.2f", s.Name, s.CC, s.CoveragePercent, s.CRAP)
 			}
 		})
 	}

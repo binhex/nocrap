@@ -57,6 +57,15 @@ func TestCoveragePathForLang(t *testing.T) {
 	if got := cfg.CoveragePathForLang("go"); got != "cover.out" {
 		t.Errorf("go = %q, want cover.out", got)
 	}
+	if got := cfg.CoveragePathForLang("c"); got != "coverage.c.gcov" {
+		t.Errorf("c = %q, want coverage.c.gcov", got)
+	}
+	if got := cfg.CoveragePathForLang("cpp"); got != "coverage.cpp.gcov" {
+		t.Errorf("cpp = %q, want coverage.cpp.gcov", got)
+	}
+	if got := cfg.CoveragePathForLang("unknown"); got != "" {
+		t.Errorf("unknown = %q, want empty", got)
+	}
 }
 
 func TestLoadConfig_NoFile(t *testing.T) {
@@ -80,6 +89,28 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	}
 	if cfg.Coverage.Python != "custom.json" {
 		t.Errorf("expected custom.json from env, got %q", cfg.Coverage.Python)
+	}
+}
+
+func TestLoadConfig_EnvOverrideC(t *testing.T) {
+	t.Setenv("CRAP_COVERAGE_C", "my_coverage.c.gcov")
+	cfg, err := config.LoadConfig("/nonexistent/.crap.toml")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Coverage.C != "my_coverage.c.gcov" {
+		t.Errorf("expected my_coverage.c.gcov from env, got %q", cfg.Coverage.C)
+	}
+}
+
+func TestLoadConfig_EnvOverrideCpp(t *testing.T) {
+	t.Setenv("CRAP_COVERAGE_CPP", "my_coverage.cpp.gcov")
+	cfg, err := config.LoadConfig("/nonexistent/.crap.toml")
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Coverage.Cpp != "my_coverage.cpp.gcov" {
+		t.Errorf("expected my_coverage.cpp.gcov from env, got %q", cfg.Coverage.Cpp)
 	}
 }
 

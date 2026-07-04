@@ -9,6 +9,62 @@ import (
 	"nocrap/internal/engine"
 )
 
+func TestAnalyze_C(t *testing.T) {
+	cfg := config.DefaultConfig()
+	scores, err := engine.Analyze([]string{filepath.Join("..", "..", "testdata", "c")}, cfg)
+	if err != nil {
+		t.Fatalf("Analyze C: %v", err)
+	}
+	if len(scores) == 0 {
+		t.Error("expected at least 1 C function")
+	}
+	t.Logf("Found %d C functions", len(scores))
+}
+
+func TestAnalyze_Cpp(t *testing.T) {
+	cfg := config.DefaultConfig()
+	scores, err := engine.Analyze([]string{filepath.Join("..", "..", "testdata", "cpp")}, cfg)
+	if err != nil {
+		t.Fatalf("Analyze C++: %v", err)
+	}
+	if len(scores) == 0 {
+		t.Error("expected at least 1 C++ function")
+	}
+	t.Logf("Found %d C++ functions", len(scores))
+}
+
+func TestAnalyze_C_WithCoverage(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Coverage.C = filepath.Join("..", "..", "testdata", "c", "simple.c.gcov")
+
+	scores, err := engine.Analyze([]string{filepath.Join("..", "..", "testdata", "c")}, cfg)
+	if err != nil {
+		t.Fatalf("Analyze C with coverage: %v", err)
+	}
+	if len(scores) == 0 {
+		t.Error("expected at least 1 score")
+	}
+	for _, s := range scores {
+		t.Logf("%s: CC=%d, Cov=%.1f%%, CRAP=%.2f", s.Name, s.CC, s.CoveragePercent, s.CRAP)
+	}
+}
+
+func TestAnalyze_Cpp_WithCoverage(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Coverage.Cpp = filepath.Join("..", "..", "testdata", "cpp", "simple.cpp.gcov")
+
+	scores, err := engine.Analyze([]string{filepath.Join("..", "..", "testdata", "cpp")}, cfg)
+	if err != nil {
+		t.Fatalf("Analyze C++ with coverage: %v", err)
+	}
+	if len(scores) == 0 {
+		t.Error("expected at least 1 score")
+	}
+	for _, s := range scores {
+		t.Logf("%s: CC=%d, Cov=%.1f%%, CRAP=%.2f", s.Name, s.CC, s.CoveragePercent, s.CRAP)
+	}
+}
+
 func TestAnalyze_Python(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Coverage.Python = filepath.Join("..", "..", "testdata", "python", ".coverage.json")

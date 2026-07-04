@@ -28,10 +28,10 @@ func TestDetectLanguage(t *testing.T) {
 
 func TestCountExecutableLines(t *testing.T) {
 	tests := []struct {
-		name     string
-		source   []byte
+		name       string
+		source     []byte
 		start, end int
-		want     int
+		want       int
 	}{
 		{
 			"simple function",

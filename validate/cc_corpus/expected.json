@@ -15,5 +15,8 @@
   },
   "skip_go": [
     "try_catch"
+  ],
+  "skip_c": [
+    "try_catch"
   ]
 }

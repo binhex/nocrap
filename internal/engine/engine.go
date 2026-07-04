@@ -11,6 +11,8 @@ import (
 	"nocrap/internal/config"
 	"nocrap/internal/coverage"
 	"nocrap/internal/driver"
+	cDriver "nocrap/internal/driver/c"
+	cppDriver "nocrap/internal/driver/cpp"
 	goDriver "nocrap/internal/driver/go"
 	jsDriver "nocrap/internal/driver/javascript"
 	pyDriver "nocrap/internal/driver/python"
@@ -32,6 +34,8 @@ var drivers = []driver.Driver{
 	jsDriver.New(),
 	tsDriver.New(),
 	goDriver.New(),
+	cDriver.New(),
+	cppDriver.New(),
 }
 
 func processLang(lang string, langFiles []string, drv driver.Driver, covMap coverage.CoverageMap) []FunctionScore {
@@ -225,6 +229,10 @@ func detectLanguage(filePath string) string {
 		return "typescript"
 	case ".go":
 		return "go"
+	case ".c", ".h":
+		return "c"
+	case ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx":
+		return "cpp"
 	default:
 		return ""
 	}
@@ -312,6 +320,8 @@ func parseCoverageByLang(path, lang string) (coverage.CoverageMap, error) {
 		return coverage.ParseLCOV(path)
 	case "go":
 		return coverage.ParseGoCover(path)
+	case "c", "cpp":
+		return coverage.ParseGcov(path)
 	default:
 		return nil, fmt.Errorf("unknown coverage format for language %s", lang)
 	}

@@ -23,6 +23,8 @@ type CoverageConfig struct {
 	Python     string `toml:"python"`
 	JavaScript string `toml:"javascript"`
 	Go         string `toml:"go"`
+	C          string `toml:"c"`
+	Cpp        string `toml:"cpp"`
 }
 
 // DefaultConfig returns the default configuration.
@@ -35,6 +37,8 @@ func DefaultConfig() *Config {
 			Python:     "coverage.json",
 			JavaScript: "coverage/lcov.info",
 			Go:         "cover.out",
+			C:          "coverage.c.gcov",
+			Cpp:        "coverage.cpp.gcov",
 		},
 	}
 }
@@ -71,6 +75,12 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("CRAP_COVERAGE_GO"); v != "" {
 		cfg.Coverage.Go = v
 	}
+	if v := os.Getenv("CRAP_COVERAGE_C"); v != "" {
+		cfg.Coverage.C = v
+	}
+	if v := os.Getenv("CRAP_COVERAGE_CPP"); v != "" {
+		cfg.Coverage.Cpp = v
+	}
 }
 
 // MergeFlags applies CLI flag overrides to the config. Zero values for
@@ -103,6 +113,10 @@ func (c *Config) CoveragePathForLang(lang string) string {
 		return c.Coverage.JavaScript
 	case "go":
 		return c.Coverage.Go
+	case "c":
+		return c.Coverage.C
+	case "cpp":
+		return c.Coverage.Cpp
 	default:
 		return ""
 	}

@@ -19,12 +19,12 @@ func TestParseGoRange_Valid(t *testing.T) {
 
 func TestParseGoRange_Invalid(t *testing.T) {
 	tests := []string{
-		"",                    // empty
-		"foo",                 // no colon
-		"foo:bar",             // no comma
-		"foo:1.0",             // missing end
-		"foo:a.0,3.0",         // non-numeric start
-		"foo:1.0,b.0",         // non-numeric end
+		"",            // empty
+		"foo",         // no colon
+		"foo:bar",     // no comma
+		"foo:1.0",     // missing end
+		"foo:a.0,3.0", // non-numeric start
+		"foo:1.0,b.0", // non-numeric end
 	}
 	for _, tc := range tests {
 		_, _, _, ok := parseGoRange(tc)
