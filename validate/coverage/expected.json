@@ -1,11 +1,32 @@
 {
-  "lcov_full": {"process": 76.92},
-  "lcov_half": {"process": 38.46},
-  "lcov_none": {"process": 0.0},
-  "cover_full": {"sum": 66.67},
-  "cover_half": {"sum": 41.67},
-  "cover_partial": {"sum": 25.0},
-  "gcov_full": {"add": 100.0, "sub": 100.0},
-  "gcov_half": {"add": 100.0, "sub": 0.0},
-  "gcov_none": {"add": 0.0, "sub": 0.0}
+  "lcov_full": {
+    "process": 100.0
+  },
+  "lcov_half": {
+    "process": 55.56
+  },
+  "lcov_none": {
+    "process": 0.0
+  },
+  "cover_full": {
+    "sum": 100.0
+  },
+  "cover_half": {
+    "sum": 62.5
+  },
+  "cover_partial": {
+    "sum": 37.5
+  },
+  "gcov_full": {
+    "add": 100.0,
+    "sub": 100.0
+  },
+  "gcov_half": {
+    "add": 100.0,
+    "sub": 0.0
+  },
+  "gcov_none": {
+    "add": 0.0,
+    "sub": 0.0
+  }
 }

@@ -60,7 +60,7 @@ func ParseGcov(path string) (CoverageMap, error) {
 		}
 
 		total++
-		if countStr != "#####" {
+		if countStr != "#####" && countStr != "0" {
 			covered[lineNo] = true
 		}
 	}

@@ -375,6 +375,10 @@ func isCodeLine(line string) bool {
 	if line == "" {
 		return false
 	}
+	// Braces, semicolons, and other single-character structural tokens are not executable.
+	if line == "{" || line == "}" {
+		return false
+	}
 	if line[0] == '#' {
 		return false
 	}

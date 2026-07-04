@@ -3,6 +3,7 @@ package cpp
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/cpp"
@@ -41,7 +42,11 @@ func (d *CppDriver) FindFunctions(source []byte, filePath string) ([]driver.Func
 			nameNode := node.ChildByFieldName("name")
 			prevClass := currentClass
 			if nameNode != nil {
-				currentClass = nameNode.Content(source)
+				if currentClass != "" {
+					currentClass = currentClass + "::" + nameNode.Content(source)
+				} else {
+					currentClass = nameNode.Content(source)
+				}
 			}
 			body := node.ChildByFieldName("body")
 			if body != nil {
@@ -93,21 +98,68 @@ func extractFunction(node *sitter.Node, source []byte, filePath, className strin
 	}
 }
 
-// extractDeclaratorName walks into a function_declarator to find the identifier or field_identifier.
+// extractDeclaratorName walks into a function_declarator to find the function name.
+// Handles named functions, operators, destructors, and conversion operators.
+// For out-of-class definitions (e.g. Calculator::add), returns the full qualified name.
 func extractDeclaratorName(decl *sitter.Node, source []byte) string {
 	for i := uint32(0); i < decl.ChildCount(); i++ {
 		child := decl.Child(int(i))
-		if child != nil && (child.Type() == "identifier" || child.Type() == "field_identifier") {
-			return child.Content(source)
+		if child == nil {
+			continue
 		}
-		// Handle nested declarators
-		if child != nil && (child.Type() == "function_declarator" || child.Type() == "pointer_declarator") {
+		switch child.Type() {
+		case "identifier", "field_identifier":
+			return child.Content(source)
+		case "qualified_identifier", "nested_identifier":
+			return extractQualifiedName(child, source)
+		case "operator_name":
+			// operator+, operator bool, etc.
+			return child.Content(source)
+		case "destructor_name":
+			// ~ClassName
+			return child.Content(source)
+		case "function_declarator", "pointer_declarator":
+			// Recurse into nested declarators
 			if n := extractDeclaratorName(child, source); n != "" {
 				return n
 			}
 		}
 	}
 	return ""
+}
+
+// extractQualifiedName builds the full qualified name from a qualified_identifier
+// or nested_identifier node, including namespace prefix and handling conversion operators.
+func extractQualifiedName(node *sitter.Node, source []byte) string {
+	var parts []string
+	for j := uint32(0); j < node.ChildCount(); j++ {
+		gc := node.Child(int(j))
+		if gc == nil {
+			continue
+		}
+		switch gc.Type() {
+		case "namespace_identifier", "identifier":
+			parts = append(parts, gc.Content(source))
+		case "operator_name":
+			parts = append(parts, gc.Content(source))
+		case "destructor_name":
+			parts = append(parts, gc.Content(source))
+		case "operator_cast":
+			// Conversion operator: extract "operator" + return type, skip parameter list
+			var castParts []string
+			for k := uint32(0); k < gc.ChildCount(); k++ {
+				inner := gc.Child(int(k))
+				if inner != nil && inner.Type() != "abstract_function_declarator" {
+					castParts = append(castParts, inner.Content(source))
+				}
+			}
+			parts = append(parts, strings.Join(castParts, " "))
+		case "qualified_identifier":
+			// Nested qualified identifier (e.g., B::method inside A::B::method)
+			parts = append(parts, gc.Content(source))
+		}
+	}
+	return strings.Join(parts, "::")
 }
 
 func (d *CppDriver) CalcComplexity(source []byte, fn driver.Function) (int, error) {
