@@ -25,7 +25,7 @@ func ParseGcov(path string) (CoverageMap, error) {
 		line := scanner.Text()
 		line = strings.TrimLeft(line, " \t")
 
-		// Header line: "-:    0:Source:/path/to/file.c"
+		// Header line
 		if strings.Contains(line, ":Source:") {
 			parts := strings.SplitN(line, ":Source:", 2)
 			if len(parts) == 2 {
@@ -34,33 +34,17 @@ func ParseGcov(path string) (CoverageMap, error) {
 			continue
 		}
 
-		// Split on first colon to get count: "#####:    3:    return -1;"
-		idx := strings.Index(line, ":")
-		if idx < 0 {
+		// Parse execution count and line number
+		lineNo, count, ok := parseGcovLine(line)
+		if !ok || count == "-" {
 			continue
 		}
-		countStr := strings.TrimSpace(line[:idx])
-		rest := line[idx+1:]
-
-		// Extract line number: "    3:    return -1;"
-		idx2 := strings.Index(rest, ":")
-		if idx2 < 0 {
-			continue
-		}
-		lineNoStr := strings.TrimSpace(rest[:idx2])
-
-		lineNo, err := strconv.Atoi(lineNoStr)
-		if err != nil {
-			continue
-		}
-
-		if countStr == "-" {
-			// Non-executable line — skip
+		if lineNo == 0 {
 			continue
 		}
 
 		total++
-		if countStr != "#####" && countStr != "0" {
+		if count != "#####" && count != "0" {
 			covered[lineNo] = true
 		}
 	}
@@ -79,4 +63,27 @@ func ParseGcov(path string) (CoverageMap, error) {
 			TotalLines:   total,
 		},
 	}, nil
+}
+
+// parseGcovLine parses a gcov data line and returns the line number and count.
+// Returns (0, "", false) if the line cannot be parsed.
+func parseGcovLine(line string) (int, string, bool) {
+	idx := strings.Index(line, ":")
+	if idx < 0 {
+		return 0, "", false
+	}
+	countStr := strings.TrimSpace(line[:idx])
+	rest := line[idx+1:]
+
+	idx2 := strings.Index(rest, ":")
+	if idx2 < 0 {
+		return 0, "", false
+	}
+	lineNoStr := strings.TrimSpace(rest[:idx2])
+
+	lineNo, err := strconv.Atoi(lineNoStr)
+	if err != nil {
+		return 0, "", false
+	}
+	return lineNo, countStr, true
 }

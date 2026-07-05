@@ -73,3 +73,48 @@ func TestCalcComplexity_Switch(t *testing.T) {
 		t.Errorf("CC = %d, want 5", cc)
 	}
 }
+
+func TestCalcComplexity_WhileDoConditional(t *testing.T) {
+	source := []byte(`int loop(int n) {
+    int s = 0;
+    while (n > 0) {
+        s += n;
+        n--;
+    }
+    do {
+        s++;
+    } while (s < 10);
+    return n > 0 ? s : 0;
+}
+`)
+	d := c.New()
+	funcs, _ := d.FindFunctions(source, "test.c")
+	cc, err := d.CalcComplexity(source, funcs[0])
+	if err != nil {
+		t.Fatalf("CalcComplexity: %v", err)
+	}
+	// Base(1) + while(1) + do(1) + ternary(1) = 4
+	if cc != 4 {
+		t.Errorf("CC = %d, want 4", cc)
+	}
+}
+
+func TestCalcComplexity_BooleanOps(t *testing.T) {
+	source := []byte(`int check(int a, int b, int c) {
+    if (a && b || c) {
+        return 1;
+    }
+    return 0;
+}
+`)
+	d := c.New()
+	funcs, _ := d.FindFunctions(source, "test.c")
+	cc, err := d.CalcComplexity(source, funcs[0])
+	if err != nil {
+		t.Fatalf("CalcComplexity: %v", err)
+	}
+	// Base(1) + if(1) + &&(1) + ||(1) = 4
+	if cc != 4 {
+		t.Errorf("CC = %d, want 5", cc)
+	}
+}

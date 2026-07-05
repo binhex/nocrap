@@ -32,53 +32,81 @@ func (d *CppDriver) FindFunctions(source []byte, filePath string) ([]driver.Func
 		return nil, fmt.Errorf("parse error in %s", filePath)
 	}
 
-	var funcs []driver.Function
-	var currentClass string
+	w := &cppWalker{funcs: nil, currentClass: ""}
+	w.walk(root, source, filePath)
+	return w.funcs, nil
+}
 
-	var walk func(node *sitter.Node)
-	walk = func(node *sitter.Node) {
-		switch node.Type() {
-		case "class_specifier", "struct_specifier":
-			nameNode := node.ChildByFieldName("name")
-			prevClass := currentClass
-			if nameNode != nil {
-				if currentClass != "" {
-					currentClass = currentClass + "::" + nameNode.Content(source)
-				} else {
-					currentClass = nameNode.Content(source)
-				}
-			}
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
-			currentClass = prevClass
+// cppWalker walks the C++ AST to find function definitions.
+type cppWalker struct {
+	funcs        []driver.Function
+	currentClass string
+}
 
-		case "function_definition":
-			fn := extractFunction(node, source, filePath, currentClass)
-			funcs = append(funcs, fn)
-			body := node.ChildByFieldName("body")
-			if body != nil {
-				walk(body)
-			}
-
-		default:
-			for i := uint32(0); i < node.ChildCount(); i++ {
-				child := node.Child(int(i))
-				if child != nil {
-					walk(child)
-				}
+func (w *cppWalker) walk(node *sitter.Node, source []byte, filePath string) {
+	switch node.Type() {
+	case "class_specifier", "struct_specifier":
+		w.walkClass(node, source, filePath)
+	case "function_definition":
+		w.walkFunction(node, source, filePath)
+	default:
+		for i := uint32(0); i < node.ChildCount(); i++ {
+			child := node.Child(int(i))
+			if child != nil {
+				w.walk(child, source, filePath)
 			}
 		}
 	}
-	walk(root)
-	return funcs, nil
+}
+
+func (w *cppWalker) walkClass(node *sitter.Node, source []byte, filePath string) {
+	nameNode := node.ChildByFieldName("name")
+	prevClass := w.currentClass
+	if nameNode != nil {
+		if w.currentClass != "" {
+			w.currentClass = w.currentClass + "::" + nameNode.Content(source)
+		} else {
+			w.currentClass = nameNode.Content(source)
+		}
+	}
+	body := node.ChildByFieldName("body")
+	if body != nil {
+		w.walk(body, source, filePath)
+	}
+	w.currentClass = prevClass
+}
+
+func (w *cppWalker) walkFunction(node *sitter.Node, source []byte, filePath string) {
+	fn := extractFunction(node, source, filePath, w.currentClass)
+	w.funcs = append(w.funcs, fn)
+	body := node.ChildByFieldName("body")
+	if body != nil {
+		w.walk(body, source, filePath)
+	}
 }
 
 func extractFunction(node *sitter.Node, source []byte, filePath, className string) driver.Function {
 	name := ""
 	if decl := node.ChildByFieldName("declarator"); decl != nil {
 		name = extractDeclaratorName(decl, source)
+	}
+	// Fallback: conversion operators may not have a declarator field.
+	// Try the operator_cast child directly.
+	if name == "" {
+		for i := uint32(0); i < node.ChildCount(); i++ {
+			child := node.Child(int(i))
+			if child != nil && child.Type() == "operator_cast" {
+				var castParts []string
+				for k := uint32(0); k < child.ChildCount(); k++ {
+					inner := child.Child(int(k))
+					if inner != nil && inner.Type() != "abstract_function_declarator" {
+						castParts = append(castParts, inner.Content(source))
+					}
+				}
+				name = strings.Join(castParts, " ")
+				break
+			}
+		}
 	}
 	startLine := int(node.StartPoint().Row) + 1
 	endLine := int(node.EndPoint().Row) + 1
@@ -138,28 +166,27 @@ func extractQualifiedName(node *sitter.Node, source []byte) string {
 			continue
 		}
 		switch gc.Type() {
-		case "namespace_identifier", "identifier":
-			parts = append(parts, gc.Content(source))
-		case "operator_name":
-			parts = append(parts, gc.Content(source))
-		case "destructor_name":
+		case "namespace_identifier", "identifier", "operator_name", "destructor_name":
 			parts = append(parts, gc.Content(source))
 		case "operator_cast":
-			// Conversion operator: extract "operator" + return type, skip parameter list
-			var castParts []string
-			for k := uint32(0); k < gc.ChildCount(); k++ {
-				inner := gc.Child(int(k))
-				if inner != nil && inner.Type() != "abstract_function_declarator" {
-					castParts = append(castParts, inner.Content(source))
-				}
-			}
-			parts = append(parts, strings.Join(castParts, " "))
+			parts = append(parts, extractOperatorCast(gc, source))
 		case "qualified_identifier":
-			// Nested qualified identifier (e.g., B::method inside A::B::method)
 			parts = append(parts, gc.Content(source))
 		}
 	}
 	return strings.Join(parts, "::")
+}
+
+// extractOperatorCast extracts the name from an operator_cast node.
+func extractOperatorCast(node *sitter.Node, source []byte) string {
+	var parts []string
+	for k := uint32(0); k < node.ChildCount(); k++ {
+		inner := node.Child(int(k))
+		if inner != nil && inner.Type() != "abstract_function_declarator" {
+			parts = append(parts, inner.Content(source))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 func (d *CppDriver) CalcComplexity(source []byte, fn driver.Function) (int, error) {

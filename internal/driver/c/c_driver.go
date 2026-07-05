@@ -133,28 +133,22 @@ func findFunctionNode(root *sitter.Node, source []byte, fn driver.Function) *sit
 // CountCC counts cyclomatic complexity decision points in a C/C++ function node.
 // Exported so the C++ driver can reuse it.
 func CountCC(node *sitter.Node, cc *int) {
-	switch node.Type() {
-	case "if_statement":
-		*cc++
-	case "for_statement":
-		*cc++
-	case "while_statement":
-		*cc++
-	case "do_statement":
-		*cc++
-	case "case_statement":
-		*cc++
-	case "catch_clause":
-		*cc++
-	case "&&", "||":
-		*cc++
-	case "conditional_expression":
-		*cc++
-	}
+	countCCDecision(node.Type(), cc)
 	for i := uint32(0); i < node.ChildCount(); i++ {
 		child := node.Child(int(i))
 		if child != nil {
 			CountCC(child, cc)
 		}
+	}
+}
+
+// countCCDecision increments CC if the node type is a McCabe decision point.
+func countCCDecision(nodeType string, cc *int) {
+	switch nodeType {
+	case "if_statement", "for_statement", "while_statement", "do_statement",
+		"case_statement", "catch_clause", "conditional_expression":
+		*cc++
+	case "&&", "||":
+		*cc++
 	}
 }
