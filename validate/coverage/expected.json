@@ -12,10 +12,10 @@
     "sum": 100.0
   },
   "cover_half": {
-    "sum": 62.5
+    "sum": 71.43
   },
   "cover_partial": {
-    "sum": 37.5
+    "sum": 42.86
   },
   "gcov_full": {
     "add": 100.0,

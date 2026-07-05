@@ -379,6 +379,11 @@ func isCodeLine(line string) bool {
 	if line == "{" || line == "}" {
 		return false
 	}
+	// Go function declarations are not executable statements.
+	// Go's cover tool only emits blocks for statements, not declarations.
+	if strings.HasPrefix(line, "func ") || strings.HasPrefix(line, "func (") {
+		return false
+	}
 	if line[0] == '#' {
 		return false
 	}
