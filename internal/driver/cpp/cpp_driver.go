@@ -90,23 +90,8 @@ func extractFunction(node *sitter.Node, source []byte, filePath, className strin
 	if decl := node.ChildByFieldName("declarator"); decl != nil {
 		name = extractDeclaratorName(decl, source)
 	}
-	// Fallback: conversion operators may not have a declarator field.
-	// Try the operator_cast child directly.
 	if name == "" {
-		for i := uint32(0); i < node.ChildCount(); i++ {
-			child := node.Child(int(i))
-			if child != nil && child.Type() == "operator_cast" {
-				var castParts []string
-				for k := uint32(0); k < child.ChildCount(); k++ {
-					inner := child.Child(int(k))
-					if inner != nil && inner.Type() != "abstract_function_declarator" {
-						castParts = append(castParts, inner.Content(source))
-					}
-				}
-				name = strings.Join(castParts, " ")
-				break
-			}
-		}
+		name = findFallbackName(node, source)
 	}
 	startLine := int(node.StartPoint().Row) + 1
 	endLine := int(node.EndPoint().Row) + 1
@@ -126,6 +111,24 @@ func extractFunction(node *sitter.Node, source []byte, filePath, className strin
 	}
 }
 
+// findFallbackName tries to extract a function name when the declarator field is missing.
+// This handles conversion operators and out-of-class qualified names.
+func findFallbackName(node *sitter.Node, source []byte) string {
+	for i := uint32(0); i < node.ChildCount(); i++ {
+		child := node.Child(int(i))
+		if child == nil {
+			continue
+		}
+		switch child.Type() {
+		case "qualified_identifier", "nested_identifier":
+			return extractQualifiedName(child, source)
+		case "operator_cast":
+			return extractOperatorCast(child, source)
+		}
+	}
+	return ""
+}
+
 // extractDeclaratorName walks into a function_declarator to find the function name.
 // Handles named functions, operators, destructors, and conversion operators.
 // For out-of-class definitions (e.g. Calculator::add), returns the full qualified name.
@@ -136,16 +139,10 @@ func extractDeclaratorName(decl *sitter.Node, source []byte) string {
 			continue
 		}
 		switch child.Type() {
-		case "identifier", "field_identifier":
+		case "identifier", "field_identifier", "operator_name", "destructor_name":
 			return child.Content(source)
 		case "qualified_identifier", "nested_identifier":
 			return extractQualifiedName(child, source)
-		case "operator_name":
-			// operator+, operator bool, etc.
-			return child.Content(source)
-		case "destructor_name":
-			// ~ClassName
-			return child.Content(source)
 		case "function_declarator", "pointer_declarator":
 			// Recurse into nested declarators
 			if n := extractDeclaratorName(child, source); n != "" {

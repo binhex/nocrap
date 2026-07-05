@@ -171,3 +171,75 @@ func TestCalcComplexity_Catch(t *testing.T) {
 		t.Errorf("CC = %d, want 3", cc)
 	}
 }
+
+func TestFindFunctions_OutOfClassConversion(t *testing.T) {
+	source := []byte(`class Bool {
+public:
+    operator bool() const;
+};
+
+Bool::operator bool() const { return true; }
+`)
+	d := cpp.New()
+	funcs, err := d.FindFunctions(source, "test.cpp")
+	if err != nil {
+		t.Fatalf("FindFunctions: %v", err)
+	}
+	if len(funcs) != 1 {
+		t.Fatalf("expected 1 function (out-of-class conversion op), got %d", len(funcs))
+	}
+	t.Logf("out-of-class conversion operator: %q", funcs[0].Name)
+}
+
+func TestFindFunctions_Template(t *testing.T) {
+	source := []byte(`template<typename T>
+T max(T a, T b) {
+    return a > b ? a : b;
+}
+`)
+	d := cpp.New()
+	funcs, _ := d.FindFunctions(source, "test.cpp")
+	if len(funcs) < 1 {
+		t.Fatalf("expected at least 1 function, got %d", len(funcs))
+	}
+}
+
+func TestFindFunctions_Namespace(t *testing.T) {
+	source := []byte(`namespace ns {
+    int getValue() { return 42; }
+}
+`)
+	d := cpp.New()
+	funcs, _ := d.FindFunctions(source, "test.cpp")
+	if len(funcs) < 1 {
+		t.Fatalf("expected at least 1 function, got %d", len(funcs))
+	}
+}
+
+func TestFindFunctions_MoreEdgeCases(t *testing.T) {
+	source := []byte(`const int* getPtr() { return 0; }
+static void helper() { }
+inline int fast(int x) { return x; }
+`)
+	d := cpp.New()
+	funcs, _ := d.FindFunctions(source, "test.cpp")
+	if len(funcs) != 3 {
+		t.Fatalf("expected 3 functions, got %d", len(funcs))
+	}
+}
+
+func TestCalcComplexity_NestedAndBoolean(t *testing.T) {
+	source := []byte(`int complex(int a, int b, int c) {
+    if (a > 0 && b > 0) {
+        if (c > 0) return 1;
+    }
+    return a || b ? 2 : 0;
+}
+`)
+	d := cpp.New()
+	funcs, _ := d.FindFunctions(source, "test.cpp")
+	cc, _ := d.CalcComplexity(source, funcs[0])
+	if cc < 4 {
+		t.Errorf("CC = %d, want at least 4", cc)
+	}
+}

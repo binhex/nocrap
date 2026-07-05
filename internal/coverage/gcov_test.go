@@ -59,3 +59,49 @@ func TestParseGcovMissing(t *testing.T) {
 		t.Error("expected error for missing file")
 	}
 }
+
+func TestParseGcov_MultipleLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	gcovPath := filepath.Join(tmpDir, "multi.gcov")
+
+	content := `        -:    0:Source:/path/to/multi.c
+        1:    1:int a() { return 1; }
+        1:    2:int b() { return 2; }
+    #####:    3:int c() { return 3; }
+        1:    4:int d() { return 4; }
+        0:    5:int e() { return 5; }
+        -:    6:}
+`
+	if err := os.WriteFile(gcovPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cov, err := coverage.ParseGcov(gcovPath)
+	if err != nil {
+		t.Fatalf("ParseGcov: %v", err)
+	}
+
+	data, ok := cov["/path/to/multi.c"]
+	if !ok {
+		t.Fatal("missing coverage key")
+	}
+
+	if data.TotalLines != 5 {
+		t.Errorf("TotalLines = %d, want 5", data.TotalLines)
+	}
+	if !data.CoveredLines[1] {
+		t.Error("line 1 should be covered")
+	}
+	if !data.CoveredLines[2] {
+		t.Error("line 2 should be covered")
+	}
+	if data.CoveredLines[3] {
+		t.Error("line 3 should NOT be covered (#####)")
+	}
+	if !data.CoveredLines[4] {
+		t.Error("line 4 should be covered")
+	}
+	if data.CoveredLines[5] {
+		t.Error("line 5 should NOT be covered (count=0)")
+	}
+}

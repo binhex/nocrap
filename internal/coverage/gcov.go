@@ -16,43 +16,10 @@ func ParseGcov(path string) (CoverageMap, error) {
 	}
 	defer f.Close()
 
-	var sourcePath string
-	covered := make(map[int]bool)
-	total := 0
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := scanner.Text()
-		line = strings.TrimLeft(line, " \t")
-
-		// Header line
-		if strings.Contains(line, ":Source:") {
-			parts := strings.SplitN(line, ":Source:", 2)
-			if len(parts) == 2 {
-				sourcePath = strings.TrimSpace(parts[1])
-			}
-			continue
-		}
-
-		// Parse execution count and line number
-		lineNo, count, ok := parseGcovLine(line)
-		if !ok || count == "-" {
-			continue
-		}
-		if lineNo == 0 {
-			continue
-		}
-
-		total++
-		if count != "#####" && count != "0" {
-			covered[lineNo] = true
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
+	sourcePath, covered, total, err := processGcovLines(bufio.NewScanner(f))
+	if err != nil {
 		return nil, fmt.Errorf("reading gcov file %s: %w", path, err)
 	}
-
 	if sourcePath == "" {
 		return nil, fmt.Errorf("no Source: header found in %s", path)
 	}
@@ -65,8 +32,45 @@ func ParseGcov(path string) (CoverageMap, error) {
 	}, nil
 }
 
+// processGcovLines scans all gcov lines and returns source path, covered lines, total lines.
+func processGcovLines(scanner *bufio.Scanner) (string, map[int]bool, int, error) {
+	var sourcePath string
+	covered := make(map[int]bool)
+	total := 0
+
+	for scanner.Scan() {
+		line := strings.TrimLeft(scanner.Text(), " \t")
+
+		if strings.Contains(line, ":Source:") {
+			parts := strings.SplitN(line, ":Source:", 2)
+			if len(parts) == 2 {
+				sourcePath = strings.TrimSpace(parts[1])
+			}
+			continue
+		}
+
+		lineNo, count, ok := parseGcovLine(line)
+		if !ok {
+			continue
+		}
+		if lineNo == 0 {
+			continue
+		}
+
+		total++
+		if isCovered(count) {
+			covered[lineNo] = true
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", nil, 0, err
+	}
+	return sourcePath, covered, total, nil
+}
+
 // parseGcovLine parses a gcov data line and returns the line number and count.
-// Returns (0, "", false) if the line cannot be parsed.
+// Returns (0, "", false) if the line cannot be parsed or is non-executable (-).
 func parseGcovLine(line string) (int, string, bool) {
 	idx := strings.Index(line, ":")
 	if idx < 0 {
@@ -85,5 +89,13 @@ func parseGcovLine(line string) (int, string, bool) {
 	if err != nil {
 		return 0, "", false
 	}
+
+	if countStr == "-" {
+		return 0, "", false
+	}
 	return lineNo, countStr, true
+}
+
+func isCovered(count string) bool {
+	return count != "#####" && count != "0"
 }
