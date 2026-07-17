@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"nocrap/internal/config"
@@ -141,13 +142,21 @@ func TestGoCoverage(t *testing.T) {
 				t.Fatalf("Analyze: %v", err)
 			}
 
+			// Debug: log all functions found
+			for _, s := range scores {
+				t.Logf("DEBUG func=%q file=%q cc=%d cov=%.1f%% lines=%d-%d",
+					s.Name, s.File, s.CC, s.CoveragePercent, s.StartLine, s.EndLine)
+			}
+
 			var covPct float64
 			for _, s := range scores {
-				if s.Name == "fixtures.sum" {
+				if s.Name == "fixtures.sum" || strings.HasSuffix(s.Name, ".sum") {
 					covPct = s.CoveragePercent
+					t.Logf("DEBUG matched func=%q coverage=%.1f%%", s.Name, covPct)
 					break
 				}
 			}
+			t.Logf("DEBUG final covPct=%.1f%% want=%.1f%%", covPct, tt.want)
 			if !validate.WithinTolerance(covPct, tt.want, 0.5) {
 				t.Errorf("CoveragePercent for cover_%s: got %.2f, want %.2f", tt.variant, covPct, tt.want)
 			}
