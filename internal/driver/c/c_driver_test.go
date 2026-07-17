@@ -197,6 +197,43 @@ static inline int fast(int x) { return x; }
 	}
 }
 
+func TestFindFunctions_DataOnlyHeader(t *testing.T) {
+	// Data-only headers (like expat's asciitab.h) can't be parsed as
+	// standalone C files. They should be skipped silently.
+	source := []byte(`/* 0x00 */ BT_NONXML, BT_NONXML, BT_NONXML, BT_NONXML,
+    /* 0x04 */ BT_NONXML, BT_NONXML, BT_NONXML, BT_NONXML,
+    /* 0x08 */ BT_NONXML, BT_S, BT_LF, BT_NONXML,
+`)
+	d := c.New()
+	funcs, err := d.FindFunctions(source, "asciitab.h")
+	if err != nil {
+		t.Fatalf("FindFunctions on data-only header: %v", err)
+	}
+	if len(funcs) != 0 {
+		t.Errorf("expected 0 functions from data-only header, got %d", len(funcs))
+	}
+}
+
+func TestFindFunctions_NormalCFunctionsStillWork(t *testing.T) {
+	source := []byte(`int add(int a, int b) {
+    return a + b;
+}
+
+int max(int a, int b) {
+    if (a > b) return a;
+    return b;
+}
+`)
+	d := c.New()
+	funcs, err := d.FindFunctions(source, "normal.c")
+	if err != nil {
+		t.Fatalf("FindFunctions on normal C: %v", err)
+	}
+	if len(funcs) != 2 {
+		t.Errorf("expected 2 functions from normal C, got %d", len(funcs))
+	}
+}
+
 func TestFindFunctions_RefAndVolatile(t *testing.T) {
 	source := []byte(`int* getPtr(volatile int* p) { return (int*)p; }
 double calc(register int n) { return n * 1.0; }

@@ -28,6 +28,30 @@ func findFuncNode(root *sitter.Node) *sitter.Node {
 	return result
 }
 
+func TestCalcComplexity_RadonUnavailable(t *testing.T) {
+	// Verify that when radon is unavailable, CalcComplexity returns
+	// CC=1 without error (graceful degradation).
+	source := []byte("def add(a, b):\n    return a + b\n")
+	d := New()
+	funcs, err := d.FindFunctions(source, "test.py")
+	if err != nil {
+		t.Fatalf("FindFunctions: %v", err)
+	}
+	if len(funcs) < 1 {
+		t.Fatal("expected at least 1 function")
+	}
+
+	for _, fn := range funcs {
+		cc, err := d.CalcComplexity(source, fn)
+		if err != nil {
+			t.Errorf("CalcComplexity(%q): unexpected error: %v", fn.Name, err)
+		}
+		if cc < 1 {
+			t.Errorf("CalcComplexity(%q) = %d, want >= 1", fn.Name, cc)
+		}
+	}
+}
+
 func TestSkipDocstring_WithDocstring(t *testing.T) {
 	source := []byte("def foo():\n    \"\"\"doc\"\"\"\n    return 1\n")
 	parser := sitter.NewParser()

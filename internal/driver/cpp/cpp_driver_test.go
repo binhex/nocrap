@@ -228,6 +228,43 @@ inline int fast(int x) { return x; }
 	}
 }
 
+func TestFindFunctions_DataOnlyHeader(t *testing.T) {
+	// Data-only headers that can't be parsed as standalone C++
+	// should be skipped silently, returning no error and no functions.
+	source := []byte(`/* 0x00 */ BT_NONXML, BT_NONXML, BT_NONXML, BT_NONXML,
+    /* 0x04 */ BT_NONXML, BT_NONXML, BT_NONXML, BT_NONXML,
+    /* 0x08 */ BT_NONXML, BT_S, BT_LF, BT_NONXML,
+`)
+	d := cpp.New()
+	funcs, err := d.FindFunctions(source, "asciitab.h")
+	if err != nil {
+		t.Fatalf("FindFunctions on data-only header: %v", err)
+	}
+	if len(funcs) != 0 {
+		t.Errorf("expected 0 functions from data-only header, got %d", len(funcs))
+	}
+}
+
+func TestFindFunctions_NormalCppFunctionsStillWork(t *testing.T) {
+	source := []byte(`int add(int a, int b) {
+    return a + b;
+}
+
+class Foo {
+public:
+    int getValue() { return 42; }
+};
+`)
+	d := cpp.New()
+	funcs, err := d.FindFunctions(source, "normal.cpp")
+	if err != nil {
+		t.Fatalf("FindFunctions on normal C++: %v", err)
+	}
+	if len(funcs) < 2 {
+		t.Errorf("expected at least 2 functions, got %d", len(funcs))
+	}
+}
+
 func TestCalcComplexity_NestedAndBoolean(t *testing.T) {
 	source := []byte(`int complex(int a, int b, int c) {
     if (a > 0 && b > 0) {

@@ -14,12 +14,21 @@ import (
 )
 
 type PythonDriver struct {
-	mu    sync.Mutex
-	cache map[string]map[int]int // filePath -> startLine -> CC
+	mu             sync.Mutex
+	cache          map[string]map[int]int // filePath -> startLine -> CC
+	radonAvailable bool                   // cached result of radon availability check
+	radonChecked   bool                   // true once radon has been checked
+	radonWarned    bool                   // true once the missing-radon warning has been printed
 }
 
 func New() *PythonDriver {
 	return &PythonDriver{}
+}
+
+// checkRadonAvailable checks whether the radon Python module is available.
+func (d *PythonDriver) checkRadonAvailable() bool {
+	cmd := exec.Command("python3", "-c", "from radon.complexity import cc_visit; print('ok')")
+	return cmd.Run() == nil
 }
 
 func (d *PythonDriver) Name() string         { return "python" }
@@ -219,24 +228,47 @@ func (d *PythonDriver) mergeCache(file string, newMap map[int]int) {
 }
 
 func (d *PythonDriver) CalcComplexity(source []byte, fn driver.Function) (int, error) {
-	if cc, ok := d.getCached(fn.File, fn.StartLine); ok {
-		return cc, nil
+	// Check radon availability once and cache the result.
+	if !d.radonChecked {
+		d.mu.Lock()
+		if !d.radonChecked {
+			d.radonChecked = true
+			d.radonAvailable = d.wrappedRadonCheck()
+			if !d.radonAvailable && !d.radonWarned {
+				d.radonWarned = true
+				fmt.Fprintf(os.Stderr, "warning: radon not available, install with: pip install radon\n")
+			}
+		}
+		d.mu.Unlock()
 	}
 
-	filePath, cleanup, err := resolveFilePath(source, fn.File)
-	if err != nil {
-		return 0, err
-	}
-	defer cleanup()
+	if d.radonAvailable {
+		if cc, ok := d.getCached(fn.File, fn.StartLine); ok {
+			return cc, nil
+		}
 
-	ccMap, err := runRadonCC(filePath)
-	if err != nil {
-		return 0, fmt.Errorf("radon CC for %s:%d: %w", fn.File, fn.StartLine, err)
+		filePath, cleanup, err := resolveFilePath(source, fn.File)
+		if err != nil {
+			return 0, err
+		}
+		defer cleanup()
+
+		ccMap, err := runRadonCC(filePath)
+		if err != nil {
+			return 0, fmt.Errorf("radon CC for %s:%d: %w", fn.File, fn.StartLine, err)
+		}
+
+		d.mergeCache(fn.File, ccMap)
+		if cc, ok := ccMap[fn.StartLine]; ok {
+			return cc, nil
+		}
 	}
 
-	d.mergeCache(fn.File, ccMap)
-	if cc, ok := ccMap[fn.StartLine]; ok {
-		return cc, nil
-	}
 	return 1, nil
+}
+
+// wrappedRadonCheck delegates to checkRadonAvailable.
+// Wrapped as a method so the call site in CalcComplexity reads clearly.
+func (d *PythonDriver) wrappedRadonCheck() bool {
+	return d.checkRadonAvailable()
 }

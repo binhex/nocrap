@@ -207,10 +207,55 @@ func matchGlobstar(pattern, path string) bool {
 	return true
 }
 
+func refineLanguage(filePath string, lang string) string {
+	// For .h files, check if they contain C++ keywords (class, public:,
+	// private:, protected:, namespace, template). If so, use the C++
+	// parser instead of the C parser.
+	if lang == "c" && strings.HasSuffix(strings.ToLower(filePath), ".h") {
+		f, err := os.Open(filePath)
+		if err != nil {
+			return lang
+		}
+		defer f.Close()
+
+		buf := make([]byte, 4096)
+		n, _ := f.Read(buf)
+		if n == 0 {
+			return lang
+		}
+
+		content := string(buf[:n])
+		// Scan for C++-only keywords that indicate this is a C++ header.
+		// Check for class/template/namespace at start of file or after
+		// newlines, and access specifiers anywhere.
+		if strings.HasPrefix(content, "class ") ||
+			strings.HasPrefix(content, "namespace ") ||
+			strings.HasPrefix(content, "template ") ||
+			strings.HasPrefix(content, "template<") ||
+			strings.Contains(content, "\nclass ") ||
+			strings.Contains(content, "\nnamespace ") ||
+			strings.Contains(content, "\ntemplate ") ||
+			strings.Contains(content, "\ntemplate<") ||
+			strings.Contains(content, "\npublic:") ||
+			strings.Contains(content, "\nprivate:") ||
+			strings.Contains(content, "\nprotected:") ||
+			strings.Contains(content, "\tpublic:") ||
+			strings.Contains(content, "\tprivate:") ||
+			strings.Contains(content, "\tprotected:") ||
+			strings.Contains(content, " public:") ||
+			strings.Contains(content, " private:") ||
+			strings.Contains(content, " protected:") {
+			return "cpp"
+		}
+	}
+	return lang
+}
+
 func groupByLanguage(files []string) map[string][]string {
 	byLang := make(map[string][]string)
 	for _, f := range files {
 		lang := detectLanguage(f)
+		lang = refineLanguage(f, lang)
 		if lang != "" {
 			byLang[lang] = append(byLang[lang], f)
 		}

@@ -3,6 +3,7 @@ package c
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/c"
@@ -16,6 +17,22 @@ func New() *CDriver { return &CDriver{} }
 func (d *CDriver) Name() string         { return "c" }
 func (d *CDriver) Extensions() []string { return []string{".c", ".h"} }
 
+// HasFunctionPattern does a quick scan of source bytes to check if
+// the file contains any C/C++ function-like patterns (i.e., `)`
+// followed by `{`). Data-only headers (like expat's asciitab.h) that
+// are meant to be #included inside array initializers have no such
+// patterns and should be skipped silently.
+func HasFunctionPattern(source []byte) bool {
+	s := string(source)
+	return strings.Contains(s, "){") ||
+		strings.Contains(s, ") {") ||
+		strings.Contains(s, ")\n{") ||
+		strings.Contains(s, ")\t{") ||
+		strings.Contains(s, ")\r\n{") ||
+		strings.Contains(s, ")\n\t{") ||
+		strings.Contains(s, ")\n    {")
+}
+
 func (d *CDriver) FindFunctions(source []byte, filePath string) ([]driver.Function, error) {
 	parser := sitter.NewParser()
 	parser.SetLanguage(c.GetLanguage())
@@ -27,6 +44,11 @@ func (d *CDriver) FindFunctions(source []byte, filePath string) ([]driver.Functi
 
 	root := tree.RootNode()
 	if root.HasError() {
+		// If the file has no function-like patterns, it's likely a
+		// data-only header that can't be parsed standalone. Skip silently.
+		if !HasFunctionPattern(source) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("parse error in %s", filePath)
 	}
 

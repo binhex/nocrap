@@ -6,6 +6,72 @@ import (
 	"testing"
 )
 
+func TestRefineLanguage(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name    string
+		lang    string
+		content string
+		want    string
+	}{
+		{
+			name:    "c header with class keyword -> cpp",
+			lang:    "c",
+			content: "#pragma once\nclass SimulatorDisplay {\npublic:\n    void begin();\n};\n",
+			want:    "cpp",
+		},
+		{
+			name:    "c header with public -> cpp",
+			lang:    "c",
+			content: "class Foo {\npublic:\n    int x;\n};\n",
+			want:    "cpp",
+		},
+		{
+			name:    "c header with template -> cpp",
+			lang:    "c",
+			content: "template<typename T>\nT max(T a, T b);\n",
+			want:    "cpp",
+		},
+		{
+			name:    "c header with namespace -> cpp",
+			lang:    "c",
+			content: "namespace ns {\nint getValue();\n}\n",
+			want:    "cpp",
+		},
+		{
+			name:    "pure c header stays c",
+			lang:    "c",
+			content: "#ifndef FOO_H\n#define FOO_H\nint add(int a, int b);\n#endif\n",
+			want:    "c",
+		},
+		{
+			name:    "non-.h file unchanged",
+			lang:    "c",
+			content: "int add(int a, int b) { return a + b; }\n",
+			want:    "c",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var filePath string
+			if tc.name == "non-.h file unchanged" {
+				filePath = filepath.Join(tmpDir, "test.c")
+			} else {
+				filePath = filepath.Join(tmpDir, "test.h")
+			}
+			if err := os.WriteFile(filePath, []byte(tc.content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			got := refineLanguage(filePath, tc.lang)
+			if got != tc.want {
+				t.Errorf("refineLanguage(%q, %q) = %q, want %q", filePath, tc.lang, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDetectLanguage(t *testing.T) {
 	tests := []struct {
 		path, want string

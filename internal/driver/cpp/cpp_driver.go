@@ -11,6 +11,10 @@ import (
 	cdriver "nocrap/internal/driver/c"
 )
 
+// hasFunctionPattern is a local wrapper around cdriver's implementation
+// that checks for C/C++ function-like patterns in source bytes.
+var hasFunctionPattern = cdriver.HasFunctionPattern
+
 type CppDriver struct{}
 
 func New() *CppDriver { return &CppDriver{} }
@@ -29,6 +33,11 @@ func (d *CppDriver) FindFunctions(source []byte, filePath string) ([]driver.Func
 
 	root := tree.RootNode()
 	if root.HasError() {
+		// If the file has no function-like patterns, it's likely a
+		// data-only header that can't be parsed standalone. Skip silently.
+		if !hasFunctionPattern(source) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("parse error in %s", filePath)
 	}
 
