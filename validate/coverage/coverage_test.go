@@ -136,10 +136,16 @@ func TestGoCoverage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cwd, _ := os.Getwd()
 			t.Logf("DEBUG cwd=%s", cwd)
-			if _, err := os.Stat("fixtures/cover_full.out"); err != nil {
-				t.Logf("DEBUG fixtures/cover_full.out: %v", err)
+			entries, _ := os.ReadDir(".")
+			for _, e := range entries {
+				t.Logf("DEBUG dir-entry: %s (dir=%v)", e.Name(), e.IsDir())
+			}
+			if fiEntries, err := os.ReadDir("fixtures"); err == nil {
+				for _, e := range fiEntries {
+					t.Logf("DEBUG fixture: %s", e.Name())
+				}
 			} else {
-				t.Logf("DEBUG fixtures/cover_full.out: exists")
+				t.Logf("DEBUG fixtures/readdir: %v", err)
 			}
 
 			cfg := config.DefaultConfig()
