@@ -1,5 +1,7 @@
-# nocrap GoReleaser config — builds static linux/amd64 and linux/arm64 binaries
+# nocrap GoReleaser config — builds linux/amd64 and linux/arm64 binaries
 # on tag push (v*), triggered by .github/workflows/release.yml
+
+version: 2
 
 before:
   hooks:
@@ -9,7 +11,6 @@ builds:
   - id: nocrap
     binary: nocrap
     env:
-      - CGO_ENABLED=0
     goos:
       - linux
     goarch:
