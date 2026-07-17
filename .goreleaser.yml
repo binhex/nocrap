@@ -11,15 +11,13 @@ builds:
     binary: nocrap
     env:
       - CGO_ENABLED=1
+      - CC_linux_arm64=aarch64-linux-gnu-gcc
+      - 'CC={{ index .Env (print "CC_" .Os "_" .Arch) }}'
     goos:
       - linux
     goarch:
       - amd64
       - arm64
-    overrides:
-      - goarch: arm64
-        env:
-          - CC=aarch64-linux-gnu-gcc
     ldflags:
       - -s -w
     flags:
