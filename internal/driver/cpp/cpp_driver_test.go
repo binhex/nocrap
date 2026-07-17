@@ -228,6 +228,31 @@ inline int fast(int x) { return x; }
 	}
 }
 
+func TestFindFunctions_PartialParseRecovery(t *testing.T) {
+	// A C++ file with some unparseable content (unexpanded macro call)
+	// should still return valid function definitions from the partial
+	// tree-sitter AST instead of an error.
+	source := []byte(`int add() { return 1; }
+#define FOO(x) x
+FOO(int)
+int max() { return 2; }
+`)
+	d := cpp.New()
+	funcs, err := d.FindFunctions(source, "test.cpp")
+	if err != nil {
+		t.Fatalf("FindFunctions should not error on partially parseable C++: %v", err)
+	}
+	if len(funcs) != 2 {
+		t.Fatalf("expected 2 functions from partial parse, got %d", len(funcs))
+	}
+	if funcs[0].Name != "add" {
+		t.Errorf("first function = %q, want %q", funcs[0].Name, "add")
+	}
+	if funcs[1].Name != "max" {
+		t.Errorf("second function = %q, want %q", funcs[1].Name, "max")
+	}
+}
+
 func TestFindFunctions_DataOnlyHeader(t *testing.T) {
 	// Data-only headers that can't be parsed as standalone C++
 	// should be skipped silently, returning no error and no functions.

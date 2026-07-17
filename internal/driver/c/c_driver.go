@@ -43,15 +43,10 @@ func (d *CDriver) FindFunctions(source []byte, filePath string) ([]driver.Functi
 	defer tree.Close()
 
 	root := tree.RootNode()
-	if root.HasError() {
-		// If the file has no function-like patterns, it's likely a
-		// data-only header that can't be parsed standalone. Skip silently.
-		if !HasFunctionPattern(source) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("parse error in %s", filePath)
-	}
 
+	// Always walk the tree to find function definitions, even if there are
+	// parse errors. Tree-sitter produces a partial AST with valid subtrees
+	// for the parseable portions of the file.
 	var funcs []driver.Function
 	var walk func(node *sitter.Node)
 	walk = func(node *sitter.Node) {
@@ -67,6 +62,17 @@ func (d *CDriver) FindFunctions(source []byte, filePath string) ([]driver.Functi
 		}
 	}
 	walk(root)
+
+	// After the walk, check whether we actually found any functions.
+	// If the tree had errors and no functions were found in the partial AST,
+	// decide whether to skip silently (data-only header) or report the error.
+	if len(funcs) == 0 && root.HasError() {
+		if !HasFunctionPattern(source) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("parse error in %s", filePath)
+	}
+
 	return funcs, nil
 }
 
@@ -113,10 +119,9 @@ func (d *CDriver) CalcComplexity(source []byte, fn driver.Function) (int, error)
 	defer tree.Close()
 
 	root := tree.RootNode()
-	if root.HasError() {
-		return 0, fmt.Errorf("parse error computing CC for %s in %s", fn.Name, fn.File)
-	}
-
+	// Attempt to find the function node even if the tree has errors.
+	// Tree-sitter produces a partial AST with valid subtrees, so
+	// function_definition nodes may still be found and analyzed.
 	funcNode := findFunctionNode(root, source, fn)
 	if funcNode == nil {
 		return 1, nil
