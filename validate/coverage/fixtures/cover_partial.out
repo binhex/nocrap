@@ -1,0 +1,5 @@
+mode: set
+nocrap/validate/coverage/fixtures/source.go:5.2,7.4 1 1
+nocrap/validate/coverage/fixtures/source.go:8.3,9.4 1 0
+nocrap/validate/coverage/fixtures/source.go:10.3,11.4 1 0
+nocrap/validate/coverage/fixtures/source.go:13.2,13.13 1 0

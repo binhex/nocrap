@@ -8,5 +8,6 @@ __pycache__/
 !internal/coverage/testdata/go/cover.out
 !internal/coverage/testdata/python/.coverage.json
 crossval/coverage.json
+!validate/coverage/fixtures/
 !docs/specs/
 !docs/plans/
