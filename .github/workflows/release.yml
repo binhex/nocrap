@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get install -y gcc python3 python3-pip
-          pip3 install radon
+          pip3 install radon pytest pytest-cov
       - name: Test
         run: go test ./... -v -count=1 -race
 

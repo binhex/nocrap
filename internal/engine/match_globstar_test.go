@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"nocrap/internal/coverage"
@@ -118,13 +120,41 @@ func TestMatchGlobstar_CorpusExcludes(t *testing.T) {
 
 func TestCollectFilesWithExcludes(t *testing.T) {
 	// Integration test: verify collectFiles with real exclude patterns doesn't
-	// accidentally exclude all files.
-	files, err := collectFiles([]string{"/data/boozarr/src/boozarr/"}, []string{
-		"**/test_*",
-		"**/*_test.go",
+	// accidentally exclude all files. Uses a temp dir so it works in CI.
+	tmpDir := t.TempDir()
+	includeDirs := []string{
+		filepath.Join(tmpDir, "src/boozarr"),
+		filepath.Join(tmpDir, "src/boozarr/utils"),
+	}
+	for _, d := range includeDirs {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	includeFiles := []string{
+		filepath.Join(tmpDir, "src/boozarr/cli.py"),
+		filepath.Join(tmpDir, "src/boozarr/config.py"),
+		filepath.Join(tmpDir, "src/boozarr/utils/helpers.py"),
+	}
+	excludeFiles := []string{
+		filepath.Join(tmpDir, "src/boozarr/tests/test_cli.py"),
+		filepath.Join(tmpDir, "src/boozarr/vendor/lib/dep.py"),
+		filepath.Join(tmpDir, "src/boozarr/testdata/fixtures/data.py"),
+	}
+	for _, f := range append(includeFiles, excludeFiles...) {
+		dir := filepath.Dir(f)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir %s: %v", dir, err)
+		}
+		if err := os.WriteFile(f, []byte("x = 1\n"), 0644); err != nil {
+			t.Fatalf("write %s: %v", f, err)
+		}
+	}
+
+	files, err := collectFiles([]string{filepath.Join(tmpDir, "src/boozarr/")}, []string{
+		"**/tests/**",
 		"**/vendor/**",
 		"**/testdata/**",
-		"**/crossval/**",
 	})
 	if err != nil {
 		t.Fatalf("collectFiles: %v", err)
