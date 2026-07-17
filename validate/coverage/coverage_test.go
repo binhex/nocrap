@@ -134,6 +134,14 @@ func TestGoCoverage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			cwd, _ := os.Getwd()
+			t.Logf("DEBUG cwd=%s", cwd)
+			if _, err := os.Stat("fixtures/cover_full.out"); err != nil {
+				t.Logf("DEBUG fixtures/cover_full.out: %v", err)
+			} else {
+				t.Logf("DEBUG fixtures/cover_full.out: exists")
+			}
+
 			cfg := config.DefaultConfig()
 			cfg.Coverage.Go = filepath.Join("fixtures", "cover_"+tt.variant+".out")
 
