@@ -33,16 +33,16 @@ func TestGoCoverage_FunctionSignatureInflatesDenominator(t *testing.T) {
 	srcFile := filepath.Join(tmpDir, "thin.go")
 	srcContent := []byte(`package thin
 
-func a(i int) int { 
-	return i + 1 
+func a(i int) int {
+	return i + 1
 }
 
-func b(i int) int { 
-	return i + 2 
+func b(i int) int {
+	return i + 2
 }
 
-func c(i int) int { 
-	return i + 3 
+func c(i int) int {
+	return i + 3
 }
 `)
 	if err := os.WriteFile(srcFile, srcContent, 0644); err != nil {

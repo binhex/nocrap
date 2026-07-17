@@ -1,0 +1,21 @@
+# nocrap GoReleaser config — builds static linux/amd64 and linux/arm64 binaries
+# on tag push (v*), triggered by .github/workflows/release.yml
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: nocrap
+    binary: nocrap
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+    flags:
+      - -trimpath
