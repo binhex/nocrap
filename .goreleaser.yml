@@ -16,6 +16,10 @@ builds:
     goarch:
       - amd64
       - arm64
+    overrides:
+      - goarch: arm64
+        env:
+          - CC=aarch64-linux-gnu-gcc
     ldflags:
       - -s -w
     flags:
